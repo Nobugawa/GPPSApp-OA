@@ -347,3 +347,47 @@ end $$;
 insert into public.organizations(name,slug)
 values('Great Precision Property Services','gpps')
 on conflict(slug) do nothing;
+
+
+-- Platform administration is deliberately separate from tenant roles.
+create table if not exists private.platform_admins (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  role text not null default 'super_admin' check (role in ('super_admin','support_admin')),
+  created_at timestamptz not null default now()
+);
+
+create or replace function private.is_platform_super_admin()
+returns boolean language sql stable security definer set search_path=private,public as $$
+  select auth.uid() is not null and exists (
+    select 1 from private.platform_admins p
+    where p.user_id=auth.uid() and p.role='super_admin'
+  );
+$$;
+
+revoke all on table private.platform_admins from public, anon, authenticated;
+revoke all on function private.is_platform_super_admin() from public;
+grant usage on schema private to authenticated;
+grant execute on function private.is_platform_super_admin() to authenticated;
+
+create or replace function private.is_org_member(org uuid)
+returns boolean language sql stable security definer set search_path=public,private as $$
+  select auth.uid() is not null and (
+    private.is_platform_super_admin()
+    or exists (
+      select 1 from public.organization_members m
+      where m.organization_id=org and m.user_id=auth.uid()
+    )
+  );
+$$;
+
+create or replace function private.is_org_admin(org uuid)
+returns boolean language sql stable security definer set search_path=public,private as $$
+  select auth.uid() is not null and (
+    private.is_platform_super_admin()
+    or exists (
+      select 1 from public.organization_members m
+      where m.organization_id=org and m.user_id=auth.uid()
+        and m.role in ('owner','admin')
+    )
+  );
+$$;
