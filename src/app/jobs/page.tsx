@@ -28,6 +28,7 @@ export default function Jobs(){
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [photos,setPhotos] = useState<File[]>([]);
   const [form, setForm] = useState({
     customer_id:'',
     title:'',
@@ -88,6 +89,36 @@ export default function Jobs(){
 
   useEffect(() => { void load(); }, []);
 
+  async function uploadJobPhotos(jobId:string){
+    if (!organizationId || photos.length === 0) return;
+
+    for (const file of photos) {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+      const path = `${organizationId}/jobs/${jobId}/${crypto.randomUUID()}-${safeName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('job-photos')
+        .upload(path,file,{upsert:false,contentType:file.type});
+
+      if (uploadError) throw uploadError;
+
+      const { error: attachmentError } = await supabase.from('attachments').insert({
+        organization_id:organizationId,
+        job_id:jobId,
+        storage_provider:'supabase',
+        bucket:'job-photos',
+        object_path:path,
+        filename:file.name,
+        mime_type:file.type || null,
+        byte_size:file.size,
+        attachment_type:'job_photo',
+        customer_visible:false
+      });
+
+      if (attachmentError) throw attachmentError;
+    }
+  }
+
   async function addJob(e: FormEvent) {
     e.preventDefault();
     if (!organizationId || !form.customer_id) return;
@@ -95,21 +126,33 @@ export default function Jobs(){
     setBusy(true);
     setMessage('');
 
-    const { error } = await supabase.from('jobs').insert({
-      organization_id: organizationId,
-      customer_id: form.customer_id,
-      title: form.title,
-      scope: form.scope || null,
-      status: form.status,
-      scheduled_for: form.scheduled_for ? new Date(form.scheduled_for).toISOString() : null
-    });
+    const { data:job, error } = await supabase
+      .from('jobs')
+      .insert({
+        organization_id: organizationId,
+        customer_id: form.customer_id,
+        title: form.title,
+        scope: form.scope || null,
+        status: form.status,
+        scheduled_for: form.scheduled_for ? new Date(form.scheduled_for).toISOString() : null
+      })
+      .select('id')
+      .single();
 
-    if (error) {
-      setMessage(error.message);
-    } else {
+    if (error || !job) {
+      setMessage(error?.message || 'Unable to create job.');
+      setBusy(false);
+      return;
+    }
+
+    try {
+      await uploadJobPhotos(job.id);
       setForm({customer_id:'',title:'',scope:'',status:'estimate',scheduled_for:''});
+      setPhotos([]);
       setShowForm(false);
       await load();
+    } catch (err) {
+      setMessage('Job created, but photo upload failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
     }
 
     setBusy(false);
@@ -128,7 +171,6 @@ export default function Jobs(){
     <div className="card">
       <div className="actions">
         <button className="btn btn-primary" onClick={() => setShowForm(v => !v)}>+ New job</button>
-        <button className="btn btn-secondary" type="button">Upload photos</button>
       </div>
 
       {showForm && <form onSubmit={addJob} style={{marginTop:16}}>
@@ -189,11 +231,23 @@ export default function Jobs(){
               style={inputStyle}
             />
           </label>
+
+          <label style={{gridColumn:'1 / -1'}}>
+            <div className="secondary">Job photos</div>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              onChange={e=>setPhotos(Array.from(e.target.files ?? []))}
+              style={inputStyle}
+            />
+            <div className="secondary">{photos.length ? `${photos.length} photo(s) selected` : 'Add photos now; they will be stored with this job.'}</div>
+          </label>
         </div>
 
         <div className="actions" style={{marginTop:12}}>
           <button className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Save job'}</button>
-          <button className="btn btn-secondary" type="button" onClick={()=>setShowForm(false)}>Cancel</button>
+          <button className="btn btn-secondary" type="button" onClick={()=>{setShowForm(false);setPhotos([])}}>Cancel</button>
         </div>
       </form>}
 
