@@ -67,7 +67,14 @@ type ProposalLine = {
 
 type Proposal = {
   source:string;
-  measurements:{deckAreaSqFt:number;effectiveFinishAreaSqFt:number};
+  measurements:{
+    deckAreaSqFt:number;
+    railingLf:number;
+    estimatedBalusterCount:number;
+    totalTreadWidthFt:number;
+    stairFinishAreaSqFt:number;
+    effectiveFinishAreaSqFt:number;
+  };
   labor:{
     setupHours:number;
     cleaningHours:number;
@@ -108,8 +115,12 @@ const blankItem = {
 const blankEstimator = {
   lengthFt:'',
   widthFt:'',
-  railingLf:'0',
+  longRailSides:'1',
+  shortRailSides:'2',
+  stairOpeningFt:'3',
+  railingMaterial:'wood' as 'wood'|'pvc'|'none',
   stairCount:'0',
+  stairWidthFt:'3',
   condition:'moderate' as 'light'|'moderate'|'heavy',
   repairHours:'0',
   coats:'2',
@@ -240,8 +251,12 @@ export default function Estimates(){
         ...prev,
         lengthFt:String(input.lengthFt ?? prev.lengthFt),
         widthFt:String(input.widthFt ?? prev.widthFt),
-        railingLf:String(input.railingLf ?? prev.railingLf),
+        longRailSides:String(input.longRailSides ?? prev.longRailSides),
+        shortRailSides:String(input.shortRailSides ?? prev.shortRailSides),
+        stairOpeningFt:String(input.stairOpeningFt ?? prev.stairOpeningFt),
+        railingMaterial:(input.railingMaterial as 'wood'|'pvc'|'none') ?? prev.railingMaterial,
         stairCount:String(input.stairCount ?? prev.stairCount),
+        stairWidthFt:String(input.stairWidthFt ?? prev.stairWidthFt),
         condition:(input.condition as 'light'|'moderate'|'heavy') ?? prev.condition,
         repairHours:String(input.repairHours ?? prev.repairHours),
         coats:String(input.coats ?? prev.coats),
@@ -440,8 +455,12 @@ export default function Estimates(){
     const input={
       lengthFt,
       widthFt,
-      railingLf:Number(estimatorForm.railingLf || 0),
+      longRailSides:Number(estimatorForm.longRailSides || 0),
+      shortRailSides:Number(estimatorForm.shortRailSides || 0),
+      stairOpeningFt:Number(estimatorForm.stairOpeningFt || 0),
+      railingMaterial:estimatorForm.railingMaterial,
       stairCount:Number(estimatorForm.stairCount || 0),
+      stairWidthFt:Number(estimatorForm.stairWidthFt || 0),
       condition:estimatorForm.condition,
       repairHours:Number(estimatorForm.repairHours || 0),
       coats:Number(estimatorForm.coats || 2),
@@ -690,8 +709,26 @@ export default function Estimates(){
         <div className="grid grid-2">
           <label><div className="secondary">Deck length (ft)</div><input type="number" min="0" step="0.1" value={estimatorForm.lengthFt} onChange={e=>setEstimatorForm({...estimatorForm,lengthFt:e.target.value})} style={inputStyle}/></label>
           <label><div className="secondary">Deck width (ft)</div><input type="number" min="0" step="0.1" value={estimatorForm.widthFt} onChange={e=>setEstimatorForm({...estimatorForm,widthFt:e.target.value})} style={inputStyle}/></label>
-          <label><div className="secondary">Railing length (linear ft)</div><input type="number" min="0" step="1" value={estimatorForm.railingLf} onChange={e=>setEstimatorForm({...estimatorForm,railingLf:e.target.value})} style={inputStyle}/></label>
+          <label><div className="secondary">Railed long sides</div>
+            <select value={estimatorForm.longRailSides} onChange={e=>setEstimatorForm({...estimatorForm,longRailSides:e.target.value})} style={inputStyle}>
+              <option value="0">0</option><option value="1">1</option><option value="2">2</option>
+            </select>
+          </label>
+          <label><div className="secondary">Railed short sides</div>
+            <select value={estimatorForm.shortRailSides} onChange={e=>setEstimatorForm({...estimatorForm,shortRailSides:e.target.value})} style={inputStyle}>
+              <option value="0">0</option><option value="1">1</option><option value="2">2</option>
+            </select>
+          </label>
+          <label><div className="secondary">Stair opening in railing (ft)</div><input type="number" min="0" step="0.5" value={estimatorForm.stairOpeningFt} onChange={e=>setEstimatorForm({...estimatorForm,stairOpeningFt:e.target.value})} style={inputStyle}/></label>
+          <label><div className="secondary">Railing / baluster material</div>
+            <select value={estimatorForm.railingMaterial} onChange={e=>setEstimatorForm({...estimatorForm,railingMaterial:e.target.value as 'wood'|'pvc'|'none'})} style={inputStyle}>
+              <option value="wood">Wood — clean/sand/stain</option>
+              <option value="pvc">PVC/composite — clean only</option>
+              <option value="none">No railing</option>
+            </select>
+          </label>
           <label><div className="secondary">Number of stair treads</div><input type="number" min="0" step="1" value={estimatorForm.stairCount} onChange={e=>setEstimatorForm({...estimatorForm,stairCount:e.target.value})} style={inputStyle}/></label>
+          <label><div className="secondary">Width of each tread (ft)</div><input type="number" min="0" step="0.25" value={estimatorForm.stairWidthFt} onChange={e=>setEstimatorForm({...estimatorForm,stairWidthFt:e.target.value})} style={inputStyle}/></label>
           <label><div className="secondary">Surface condition</div>
             <select value={estimatorForm.condition} onChange={e=>setEstimatorForm({...estimatorForm,condition:e.target.value as 'light'|'moderate'|'heavy'})} style={inputStyle}>
               <option value="light">Light prep</option><option value="moderate">Moderate prep</option><option value="heavy">Heavy prep</option>
@@ -711,7 +748,7 @@ export default function Estimates(){
           <div className="group-head">
             <div>
               <h3 className="section-title" style={{marginBottom:2}}>Proposed estimate</h3>
-              <div className="secondary">{proposal.source==='deterministic+vision'?'Measurements + photo analysis':'Measurements + estimating model'} · {proposal.measurements.deckAreaSqFt.toFixed(0)} sq ft deck</div>
+              <div className="secondary">{proposal.source==='deterministic+vision'?'Measurements + photo analysis':'Measurements + estimating model'} · {proposal.measurements.deckAreaSqFt.toFixed(0)} sq ft deck · {proposal.measurements.railingLf.toFixed(0)} LF railing · {proposal.measurements.totalTreadWidthFt.toFixed(0)} ft cumulative tread width</div>
             </div>
             <div className="metric-value money">${proposal.subtotal.toFixed(2)}</div>
           </div>
@@ -725,7 +762,7 @@ export default function Estimates(){
             <div className="card" style={{boxShadow:'none'}}>
               <div className="secondary">Proposed stain</div>
               <div className="primary">{proposal.materials.stainGallons} gallon(s)</div>
-              <div className="secondary">{estimatorForm.coats} coat(s) plus planning waste</div>
+              <div className="secondary">{estimatorForm.coats} coat(s) plus planning waste{proposal.measurements.estimatedBalusterCount ? ` · ~${proposal.measurements.estimatedBalusterCount} balusters included` : ''}</div>
             </div>
           </div>
 
@@ -752,8 +789,8 @@ export default function Estimates(){
       <div className="quote-builder">
         <section className="card">
           <p className="kicker">Step 3</p>
-          <h2 className="section-title">Review or adjust line items</h2>
-          <p className="secondary">Generated lines appear here after you apply the proposal. You can also add lines manually.</p>
+          <h2 className="section-title">Review the applied estimate</h2>
+          <p className="secondary">Step 2 creates a proposal only. When you click “Apply proposal to estimate,” those proposed lines become the saved estimate here. Step 3 is simply where you fine-tune them, remove anything you do not want, or add a missing labor/part/material line before sending it to the customer.</p>
 
           <div className="actions" style={{marginBottom:14}}>
             {(['labor','part','material','other'] as EstimateItem['item_type'][]).map(type=><button key={type} className={itemForm.item_type===type?'btn btn-primary':'btn btn-secondary'} type="button" onClick={()=>setItemForm({...itemForm,item_type:type})}>{type==='labor'?'Labor':type==='part'?'Part':type==='material'?'Material':'Other'}</button>)}
