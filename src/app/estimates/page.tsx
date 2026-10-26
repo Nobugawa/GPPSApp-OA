@@ -74,6 +74,8 @@ type Proposal = {
     totalTreadWidthFt:number;
     stairFinishAreaSqFt:number;
     estimatedDeckHeightFt:number;
+    inferredDeckHeightFt:number;
+    elevationSource:string;
     elevationClass:string;
     railingAccess:string;
     effectiveFinishAreaSqFt:number;
@@ -124,6 +126,7 @@ const blankEstimator = {
   railingMaterial:'wood' as 'wood'|'pvc'|'none',
   stairCount:'0',
   stairWidthFt:'3',
+  deckHeightFt:'',
   railingAccess:'auto' as 'auto'|'topside'|'mixed'|'ladder',
   condition:'moderate' as 'light'|'moderate'|'heavy',
   repairHours:'0',
@@ -261,6 +264,7 @@ export default function Estimates(){
         railingMaterial:(input.railingMaterial as 'wood'|'pvc'|'none') ?? prev.railingMaterial,
         stairCount:String(input.stairCount ?? prev.stairCount),
         stairWidthFt:String(input.stairWidthFt ?? prev.stairWidthFt),
+        deckHeightFt:input.deckHeightFt===null || input.deckHeightFt===undefined ? prev.deckHeightFt : String(input.deckHeightFt),
         railingAccess:(input.railingAccess as 'auto'|'topside'|'mixed'|'ladder') ?? prev.railingAccess,
         condition:(input.condition as 'light'|'moderate'|'heavy') ?? prev.condition,
         repairHours:String(input.repairHours ?? prev.repairHours),
@@ -466,6 +470,7 @@ export default function Estimates(){
       railingMaterial:estimatorForm.railingMaterial,
       stairCount:Number(estimatorForm.stairCount || 0),
       stairWidthFt:Number(estimatorForm.stairWidthFt || 0),
+      deckHeightFt:estimatorForm.deckHeightFt.trim()==='' ? null : Number(estimatorForm.deckHeightFt),
       railingAccess:estimatorForm.railingAccess,
       condition:estimatorForm.condition,
       repairHours:Number(estimatorForm.repairHours || 0),
@@ -735,6 +740,7 @@ export default function Estimates(){
           </label>
           <label><div className="secondary">Number of stair treads</div><input type="number" min="0" step="1" value={estimatorForm.stairCount} onChange={e=>setEstimatorForm({...estimatorForm,stairCount:e.target.value})} style={inputStyle}/></label>
           <label><div className="secondary">Width of each tread (ft)</div><input type="number" min="0" step="0.25" value={estimatorForm.stairWidthFt} onChange={e=>setEstimatorForm({...estimatorForm,stairWidthFt:e.target.value})} style={inputStyle}/></label>
+          <label><div className="secondary">Deck height above grade (ft) — optional override</div><input type="number" min="0" step="0.5" value={estimatorForm.deckHeightFt} onChange={e=>setEstimatorForm({...estimatorForm,deckHeightFt:e.target.value})} placeholder="Leave blank to infer from stairs" style={inputStyle}/></label>
           <label><div className="secondary">Exterior railing access</div>
             <select value={estimatorForm.railingAccess} onChange={e=>setEstimatorForm({...estimatorForm,railingAccess:e.target.value as 'auto'|'topside'|'mixed'|'ladder'})} style={inputStyle}>
               <option value="auto">Auto from stairs/elevation</option>
@@ -762,7 +768,7 @@ export default function Estimates(){
           <div className="group-head">
             <div>
               <h3 className="section-title" style={{marginBottom:2}}>Proposed estimate</h3>
-              <div className="secondary">{proposal.source==='deterministic+vision'?'Measurements + photo analysis':'Measurements + estimating model'} · {proposal.measurements.deckAreaSqFt.toFixed(0)} sq ft deck · {proposal.measurements.railingLf.toFixed(0)} LF railing · {proposal.measurements.totalTreadWidthFt.toFixed(0)} ft cumulative tread width · ~{proposal.measurements.estimatedDeckHeightFt.toFixed(1)} ft high ({proposal.measurements.elevationClass})</div>
+              <div className="secondary">{proposal.source==='deterministic+vision'?'Measurements + photo analysis':'Measurements + estimating model'} · {proposal.measurements.deckAreaSqFt.toFixed(0)} sq ft deck · {proposal.measurements.railingLf.toFixed(0)} LF railing · {proposal.measurements.totalTreadWidthFt.toFixed(0)} ft cumulative tread width · ~{proposal.measurements.estimatedDeckHeightFt.toFixed(1)} ft high ({proposal.measurements.elevationClass}, {proposal.measurements.elevationSource==='manual'?'manual':'inferred'})</div>
             </div>
             <div className="metric-value money">${proposal.subtotal.toFixed(2)}</div>
           </div>
