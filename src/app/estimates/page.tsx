@@ -277,7 +277,26 @@ export default function Estimates(){
       }));
     }
 
-    if (output && Object.keys(output).length) setProposal(output);
+    if (output && Object.keys(output).length) {
+      const legacyMeasurements = (output.measurements ?? {}) as Partial<Proposal['measurements']>;
+      const normalizedProposal:Proposal = {
+        ...output,
+        measurements:{
+          deckAreaSqFt:Number(legacyMeasurements.deckAreaSqFt ?? 0),
+          railingLf:Number(legacyMeasurements.railingLf ?? 0),
+          estimatedBalusterCount:Number(legacyMeasurements.estimatedBalusterCount ?? 0),
+          totalTreadWidthFt:Number(legacyMeasurements.totalTreadWidthFt ?? 0),
+          stairFinishAreaSqFt:Number(legacyMeasurements.stairFinishAreaSqFt ?? 0),
+          estimatedDeckHeightFt:Number(legacyMeasurements.estimatedDeckHeightFt ?? legacyMeasurements.inferredDeckHeightFt ?? 0),
+          inferredDeckHeightFt:Number(legacyMeasurements.inferredDeckHeightFt ?? legacyMeasurements.estimatedDeckHeightFt ?? 0),
+          elevationSource:String(legacyMeasurements.elevationSource ?? 'legacy'),
+          elevationClass:String(legacyMeasurements.elevationClass ?? 'unknown'),
+          railingAccess:String(legacyMeasurements.railingAccess ?? 'unknown'),
+          effectiveFinishAreaSqFt:Number(legacyMeasurements.effectiveFinishAreaSqFt ?? legacyMeasurements.deckAreaSqFt ?? 0)
+        }
+      };
+      setProposal(normalizedProposal);
+    }
   }
 
   async function openDraft(draft:Draft){
