@@ -654,6 +654,39 @@ export default function Estimates(){
     setBusy(false);
   }
 
+  async function setEstimateStatus(status:'draft'|'ready'){
+    if (!estimate) return;
+
+    if (status==='ready' && items.length===0) {
+      setMessage('Add or apply at least one estimate line before marking this estimate ready.');
+      return;
+    }
+
+    setBusy(true);
+    setSaveState('saving');
+
+    const { error }=await supabase
+      .from('estimates')
+      .update({status})
+      .eq('id',estimate.id);
+
+    if (error) {
+      setSaveState('error');
+      setMessage(error.message);
+      setBusy(false);
+      return;
+    }
+
+    setEstimate(prev=>prev ? {...prev,status} : prev);
+    setSaveState('saved');
+    setMessage(status==='ready'
+      ? 'Estimate marked Ready and moved to Saved Estimates.'
+      : 'Estimate reopened as a draft.');
+
+    await loadWorkspace();
+    setBusy(false);
+  }
+
   async function removeItem(itemId:string){
     if (!estimate) return;
 
@@ -786,13 +819,18 @@ export default function Estimates(){
       <section className="card" style={{marginBottom:16}}>
         <div className="group-head">
           <div>
-            <p className="kicker">Saved draft</p>
+            <p className="kicker">{estimate.status==='draft' ? 'Draft estimate' : 'Saved estimate'}</p>
             <h2 className="section-title" style={{marginBottom:2}}>Estimate #{estimate.estimate_number ?? '—'} · {jobs.find(j=>j.id===estimate.job_id)?.title || 'Estimate draft'}</h2>
             <div className="secondary">{savedPhotoCount} saved photo(s) · {items.length} line item(s)</div>
           </div>
           <div style={{textAlign:'right'}}>
-            <span className={saveState==='error'?'badge warn':'badge success'}>{saveState==='saving'?'Saving…':saveState==='error'?'Save issue':'Draft saved'}</span>
-            <div style={{marginTop:8}}><button className="btn btn-secondary" type="button" onClick={()=>{setEstimate(null);setItems([]);setPhotos([]);setAccessPhotos([]);setProposal(null);setMessage('');void loadWorkspace();}}>Back to estimates</button></div>
+            <span className={saveState==='error'?'badge warn':'badge success'}>{saveState==='saving'?'Saving…':saveState==='error'?'Save issue':estimate.status==='draft'?'Draft saved':'Ready'}</span>
+            <div className="actions" style={{marginTop:8,justifyContent:'flex-end'}}>
+              {estimate.status==='draft'
+                ? <button className="btn btn-primary" type="button" onClick={()=>setEstimateStatus('ready')} disabled={busy}>Mark Ready</button>
+                : <button className="btn btn-secondary" type="button" onClick={()=>setEstimateStatus('draft')} disabled={busy}>Reopen as Draft</button>}
+              <button className="btn btn-secondary" type="button" onClick={()=>{setEstimate(null);setItems([]);setPhotos([]);setAccessPhotos([]);setProposal(null);setMessage('');void loadWorkspace();}}>Back to estimates</button>
+            </div>
           </div>
         </div>
         {message && <div className="secondary" style={{marginTop:10}}>{message}</div>}
