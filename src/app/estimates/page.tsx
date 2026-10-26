@@ -143,6 +143,8 @@ export default function Estimates(){
   const [organizationId,setOrganizationId] = useState<string | null>(null);
   const [jobs,setJobs] = useState<Job[]>([]);
   const [drafts,setDrafts] = useState<Draft[]>([]);
+  const [savedEstimates,setSavedEstimates] = useState<Draft[]>([]);
+  const [showNewEstimate,setShowNewEstimate] = useState(false);
   const [jobId,setJobId] = useState('');
   const [estimate,setEstimate] = useState<Estimate | null>(null);
   const [items,setItems] = useState<EstimateItem[]>([]);
@@ -180,7 +182,7 @@ export default function Estimates(){
       return;
     }
 
-    const [jobResult,draftResult,orgResult] = await Promise.all([
+    const [jobResult,draftResult,savedResult,orgResult] = await Promise.all([
       supabase
         .from('jobs')
         .select('id,title,scope,customer_id,customers(first_name,last_name,company_name)')
@@ -191,6 +193,12 @@ export default function Estimates(){
         .select('id,job_id,estimate_number,status,subtotal,tax,total,estimator_output,created_at,jobs(title,customers(first_name,last_name,company_name))')
         .eq('organization_id',orgId)
         .eq('status','draft')
+        .order('created_at',{ascending:false}),
+      supabase
+        .from('estimates')
+        .select('id,job_id,estimate_number,status,subtotal,tax,total,estimator_output,created_at,jobs(title,customers(first_name,last_name,company_name))')
+        .eq('organization_id',orgId)
+        .neq('status','draft')
         .order('created_at',{ascending:false}),
       supabase
         .from('organizations')
@@ -204,6 +212,9 @@ export default function Estimates(){
 
     if (draftResult.error) setMessage(draftResult.error.message);
     else setDrafts((draftResult.data ?? []) as unknown as Draft[]);
+
+    if (savedResult.error) setMessage(savedResult.error.message);
+    else setSavedEstimates((savedResult.data ?? []) as unknown as Draft[]);
 
     if (!orgResult.error && orgResult.data?.default_labor_rate != null) {
       setEstimatorForm(prev=>({...prev,laborRate:String(orgResult.data.default_labor_rate)}));
@@ -674,39 +685,72 @@ export default function Estimates(){
     <p className="subtitle">Drafts save first. Generate a proposal from measurements and photos, then review before sending.</p>
 
     {!estimate && <>
-      {drafts.length>0 && <section className="card" style={{marginBottom:16}}>
+      <div className="actions" style={{marginBottom:16}}>
+        <button
+          className="btn btn-primary"
+          type="button"
+          onClick={()=>{setShowNewEstimate(v=>!v);setJobId('');setPhotos([]);setMessage('')}}
+        >
+          {showNewEstimate ? 'Cancel new estimate' : '+ New estimate'}
+        </button>
+      </div>
+
+      <section className="card" style={{marginBottom:16}}>
         <div className="group-head">
           <div>
-            <h2 className="section-title" style={{marginBottom:2}}>Saved drafts</h2>
-            <div className="secondary">Open any draft and continue exactly where you left off.</div>
+            <h2 className="section-title" style={{marginBottom:2}}>Drafts</h2>
+            <div className="secondary">Unfinished estimates. Open one to continue where you left off.</div>
           </div>
           <span className="badge">{drafts.length} draft{drafts.length===1?'':'s'}</span>
         </div>
 
         <div className="list">
+          {drafts.length===0 && <div className="secondary">No estimate drafts.</div>}
           {drafts.map(draft=><div className="list-item" key={draft.id}>
             <div>
               <div className="primary">Estimate #{draft.estimate_number ?? '—'} · {draft.jobs?.title || 'Untitled job'}</div>
-              <div className="secondary">
-                {customerName(draft.jobs?.customers)} · Saved {new Date(draft.created_at).toLocaleString()}
-              </div>
+              <div className="secondary">{customerName(draft.jobs?.customers)} · Last saved {new Date(draft.created_at).toLocaleString()}</div>
             </div>
             <div className="actions">
               <div style={{textAlign:'right'}}>
                 <div className="primary money">Applied: ${Number(draft.total).toFixed(2)}</div>
                 {draft.estimator_output?.subtotal != null && Number(draft.estimator_output.subtotal)!==Number(draft.total) && <div className="secondary">Pending proposal: ${Number(draft.estimator_output.subtotal).toFixed(2)}</div>}
               </div>
-              <button className="btn btn-primary" type="button" onClick={()=>openDraft(draft)}>Continue draft</button>
+              <button className="btn btn-primary" type="button" onClick={()=>openDraft(draft)}>Continue</button>
             </div>
           </div>)}
         </div>
-      </section>}
+      </section>
 
-      <div className="quote-builder">
+      <section className="card" style={{marginBottom:16}}>
+        <div className="group-head">
+          <div>
+            <h2 className="section-title" style={{marginBottom:2}}>Saved estimates</h2>
+            <div className="secondary">Estimates that are no longer drafts.</div>
+          </div>
+          <span className="badge">{savedEstimates.length}</span>
+        </div>
+
+        <div className="list">
+          {savedEstimates.length===0 && <div className="secondary">No saved estimates yet.</div>}
+          {savedEstimates.map(saved=><div className="list-item" key={saved.id}>
+            <div>
+              <div className="primary">Estimate #{saved.estimate_number ?? '—'} · {saved.jobs?.title || 'Untitled job'}</div>
+              <div className="secondary">{customerName(saved.jobs?.customers)} · {saved.status.replaceAll('_',' ')}</div>
+            </div>
+            <div className="actions">
+              <div className="primary money">${Number(saved.total).toFixed(2)}</div>
+              <button className="btn btn-secondary" type="button" onClick={()=>openDraft(saved)}>Open</button>
+            </div>
+          </div>)}
+        </div>
+      </section>
+
+      {showNewEstimate && <div className="quote-builder">
         <form className="card" onSubmit={saveDraft}>
-          <p className="kicker">Step 1</p>
-          <h2 className="section-title">Start a saved draft</h2>
-          <p className="secondary">Choose the job and add any site photos. The draft record is saved before photo uploads begin.</p>
+          <p className="kicker">New estimate</p>
+          <h2 className="section-title">Create a new draft</h2>
+          <p className="secondary">Choose a job. Add photos now if useful; you can add more later.</p>
 
           <label>
             <div className="secondary">Job</div>
@@ -724,18 +768,18 @@ export default function Estimates(){
           </div>
 
           <div className="actions" style={{marginTop:16}}>
-            <button className="btn btn-primary" disabled={busy || !jobId}>{busy ? 'Saving…' : 'Save draft & continue'}</button>
+            <button className="btn btn-primary" disabled={busy || !jobId}>{busy ? 'Creating…' : 'Create draft'}</button>
           </div>
 
           {message && <div className="secondary" style={{marginTop:14}}>{message}</div>}
         </form>
 
         <aside className="card">
-          <p className="kicker">What happens next</p>
-          <h2 className="section-title">Generate, then review</h2>
-          <p className="secondary">The estimator proposes labor and materials from measurements, condition and available photos. You approve or adjust it before anything becomes customer-facing.</p>
+          <p className="kicker">New estimate</p>
+          <h2 className="section-title">One job, one new draft</h2>
+          <p className="secondary">Existing drafts stay in the Drafts section above. This form is only for creating another estimate.</p>
         </aside>
-      </div>
+      </div>}
     </>}
 
     {estimate && <div>
