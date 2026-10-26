@@ -20,22 +20,25 @@ type Job = {
   customers?: Customer | null;
 };
 
+const blankForm = {
+  customer_id:'',
+  title:'',
+  scope:'',
+  status:'estimate',
+  scheduled_for:''
+};
+
 export default function Jobs(){
   const supabase = useMemo(() => createClient(), []);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [editingId,setEditingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [photos,setPhotos] = useState<File[]>([]);
-  const [form, setForm] = useState({
-    customer_id:'',
-    title:'',
-    scope:'',
-    status:'estimate',
-    scheduled_for:''
-  });
+  const [form, setForm] = useState({...blankForm});
 
   async function load() {
     setMessage('');
@@ -119,40 +122,91 @@ export default function Jobs(){
     }
   }
 
-  async function addJob(e: FormEvent) {
+  function openNew(){
+    setEditingId(null);
+    setForm({...blankForm});
+    setPhotos([]);
+    setShowForm(true);
+    setMessage('');
+  }
+
+  function openEdit(job:Job){
+    setEditingId(job.id);
+    setForm({
+      customer_id:job.customer_id,
+      title:job.title,
+      scope:job.scope ?? '',
+      status:job.status,
+      scheduled_for:job.scheduled_for ? new Date(job.scheduled_for).toISOString().slice(0,16) : ''
+    });
+    setPhotos([]);
+    setShowForm(true);
+    setMessage('');
+  }
+
+  async function saveJob(e: FormEvent) {
     e.preventDefault();
     if (!organizationId || !form.customer_id) return;
 
     setBusy(true);
     setMessage('');
 
-    const { data:job, error } = await supabase
-      .from('jobs')
-      .insert({
-        organization_id: organizationId,
-        customer_id: form.customer_id,
-        title: form.title,
-        scope: form.scope || null,
-        status: form.status,
-        scheduled_for: form.scheduled_for ? new Date(form.scheduled_for).toISOString() : null
-      })
-      .select('id')
-      .single();
+    let jobId=editingId;
 
-    if (error || !job) {
-      setMessage(error?.message || 'Unable to create job.');
+    if(editingId){
+      const { error }=await supabase
+        .from('jobs')
+        .update({
+          customer_id: form.customer_id,
+          title: form.title,
+          scope: form.scope || null,
+          status: form.status,
+          scheduled_for: form.scheduled_for ? new Date(form.scheduled_for).toISOString() : null
+        })
+        .eq('id',editingId);
+
+      if(error){
+        setMessage(error.message);
+        setBusy(false);
+        return;
+      }
+    } else {
+      const { data:job, error } = await supabase
+        .from('jobs')
+        .insert({
+          organization_id: organizationId,
+          customer_id: form.customer_id,
+          title: form.title,
+          scope: form.scope || null,
+          status: form.status,
+          scheduled_for: form.scheduled_for ? new Date(form.scheduled_for).toISOString() : null
+        })
+        .select('id')
+        .single();
+
+      if (error || !job) {
+        setMessage(error?.message || 'Unable to create job.');
+        setBusy(false);
+        return;
+      }
+      jobId=job.id;
+    }
+
+    if(!jobId){
       setBusy(false);
       return;
     }
 
     try {
-      await uploadJobPhotos(job.id);
-      setForm({customer_id:'',title:'',scope:'',status:'estimate',scheduled_for:''});
+      await uploadJobPhotos(jobId);
+      setForm({...blankForm});
       setPhotos([]);
+      setEditingId(null);
       setShowForm(false);
+      setMessage(editingId ? 'Job updated.' : 'Job created.');
       await load();
     } catch (err) {
-      setMessage('Job created, but photo upload failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      setMessage((editingId ? 'Job updated' : 'Job created') + ', but photo upload failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
     }
 
     setBusy(false);
@@ -170,10 +224,15 @@ export default function Jobs(){
 
     <div className="card">
       <div className="actions">
-        <button className="btn btn-primary" onClick={() => setShowForm(v => !v)}>+ New job</button>
+        <button className="btn btn-primary" onClick={openNew}>+ New job</button>
       </div>
 
-      {showForm && <form onSubmit={addJob} style={{marginTop:16}}>
+      {showForm && <form onSubmit={saveJob} style={{marginTop:16}}>
+        <div className="group-head">
+          <strong>{editingId ? 'Edit job' : 'New job'}</strong>
+          {editingId && <span className="badge">Editing</span>}
+        </div>
+
         <div className="grid grid-2">
           <label>
             <div className="secondary">Customer</div>
@@ -195,8 +254,11 @@ export default function Jobs(){
               <option value="estimate">Estimate</option>
               <option value="approved">Approved</option>
               <option value="scheduled">Scheduled</option>
+              <option value="en_route">En route</option>
+              <option value="arrived">Arrived</option>
               <option value="in_progress">In progress</option>
               <option value="complete">Complete</option>
+              <option value="cancelled">Cancelled</option>
             </select>
           </label>
 
@@ -233,7 +295,7 @@ export default function Jobs(){
           </label>
 
           <label style={{gridColumn:'1 / -1'}}>
-            <div className="secondary">Job photos</div>
+            <div className="secondary">{editingId ? 'Add more job photos' : 'Job photos'}</div>
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp"
@@ -241,13 +303,13 @@ export default function Jobs(){
               onChange={e=>setPhotos(Array.from(e.target.files ?? []))}
               style={inputStyle}
             />
-            <div className="secondary">{photos.length ? `${photos.length} photo(s) selected` : 'Add photos now; they will be stored with this job.'}</div>
+            <div className="secondary">{photos.length ? `${photos.length} photo(s) selected` : editingId ? 'Existing photos are retained. Select files only if you want to add more.' : 'Add photos now; they will be stored with this job.'}</div>
           </label>
         </div>
 
         <div className="actions" style={{marginTop:12}}>
-          <button className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Save job'}</button>
-          <button className="btn btn-secondary" type="button" onClick={()=>{setShowForm(false);setPhotos([])}}>Cancel</button>
+          <button className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : editingId ? 'Save changes' : 'Save job'}</button>
+          <button className="btn btn-secondary" type="button" onClick={()=>{setShowForm(false);setEditingId(null);setPhotos([]);setForm({...blankForm})}}>Cancel</button>
         </div>
       </form>}
 
@@ -263,7 +325,10 @@ export default function Jobs(){
               {j.scope ? ' · ' + j.scope : ''}
             </div>
           </div>
-          <span className={j.status === 'complete' ? 'badge success' : 'badge'}>{j.status.replace('_',' ')}</span>
+          <div className="actions">
+            <span className={j.status === 'complete' ? 'badge success' : 'badge'}>{j.status.replaceAll('_',' ')}</span>
+            <button className="btn btn-secondary" type="button" onClick={()=>openEdit(j)}>Edit</button>
+          </div>
         </div>)}
       </div>
     </div>
