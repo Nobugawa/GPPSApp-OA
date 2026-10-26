@@ -80,3 +80,6 @@ a{color:inherit;text-decoration:none}
   .content-column{min-height:calc(100vh - 58px)}
   .app-footer{padding:10px 14px 78px;text-align:center}
 }
+
+.photo-dropzone{border:2px dashed var(--line);border-radius:14px;padding:22px;text-align:center;background:#fafbfd;cursor:pointer;transition:.15s ease}
+.photo-dropzone:hover{border-color:#9fb6d4;background:#f5f8fc}
