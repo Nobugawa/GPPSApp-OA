@@ -9,6 +9,7 @@ type EstimatorInput = {
   railingMaterial:'wood'|'pvc'|'none';
   stairCount:number;
   stairWidthFt:number;
+  railingAccess:'topside'|'ladder'|'mixed'|'auto';
   condition:'light'|'moderate'|'heavy';
   repairHours:number;
   coats:number;
@@ -44,6 +45,20 @@ function deterministicProposal(input:EstimatorInput){
   const totalTreadWidthFt=Math.max(0,input.stairCount||0)*Math.max(0,input.stairWidthFt||0);
   const stairFinishArea=totalTreadWidthFt*1.5;
 
+  const estimatedDeckHeightFt=Math.max(0,(Math.max(0,input.stairCount||0)*7.5)/12);
+  const elevationClass=estimatedDeckHeightFt < 2.5 ? 'ground' : estimatedDeckHeightFt < 5 ? 'low' : 'elevated';
+  const effectiveRailingAccess=input.railingAccess==='auto'
+    ? (elevationClass==='elevated' ? 'mixed' : 'topside')
+    : input.railingAccess;
+  const elevationSetupHours=elevationClass==='elevated' ? 1.0 : elevationClass==='low' ? 0.35 : 0;
+  const railingAccessHours=input.railingMaterial==='wood' && railingLf>0
+    ? effectiveRailingAccess==='ladder'
+      ? roundQuarter(railingLf/18)
+      : effectiveRailingAccess==='mixed'
+        ? roundQuarter(railingLf/32)
+        : 0
+    : 0;
+
   const woodRailFinishArea=input.railingMaterial==='wood' ? railingLf*4.5 : 0;
   const estimatedBalusterCount=input.railingMaterial==='wood' ? Math.round(railingLf*12/5.5) : 0;
 
@@ -51,7 +66,7 @@ function deterministicProposal(input:EstimatorInput){
   const sandArea=deckArea+stairFinishArea+woodRailFinishArea;
   const stainArea=deckArea+stairFinishArea+woodRailFinishArea;
 
-  const setupHours=1.5;
+  const setupHours=roundQuarter(1.5+elevationSetupHours+railingAccessHours);
   const cleanHours=roundQuarter(Math.max(1.5,cleanArea/160)*factor);
   const sandHours=roundQuarter(Math.max(2,sandArea/90)*factor);
   const stainHours=roundQuarter(Math.max(1.5,(stainArea/145)*coats));
@@ -112,11 +127,14 @@ function deterministicProposal(input:EstimatorInput){
       estimatedBalusterCount,
       totalTreadWidthFt:Math.round(totalTreadWidthFt*10)/10,
       stairFinishAreaSqFt:Math.round(stairFinishArea),
+      estimatedDeckHeightFt:Math.round(estimatedDeckHeightFt*10)/10,
+      elevationClass,
+      railingAccess:effectiveRailingAccess,
       effectiveFinishAreaSqFt:Math.round(stainArea)
     },
     labor:{
       setupHours,cleaningHours:cleanHours,sandingHours:sandHours,stainingHours:stainHours,
-      repairHours,totalHours:totalLaborHours,hourlyRate:laborRate
+      repairHours,elevationSetupHours,railingAccessHours,totalHours:totalLaborHours,hourlyRate:laborRate
     },
     materials:{stainGallons,stainCostPerGallon:input.stainCostPerGallon,cleanerAllowance,sandingAllowance,miscAllowance},
     lines,
@@ -125,13 +143,17 @@ function deterministicProposal(input:EstimatorInput){
       'Railing linear footage is calculated from the selected long and short deck edges, less the stair opening.',
       'Wood railing/baluster finishing is included when Wood is selected. PVC railing is treated as cleaning only.',
       'Stair labor is driven primarily by total tread width/surface, not simply the number of treads.',
+      'Deck elevation is inferred from stair count using a 7.5-inch planning riser and can be overridden by field judgment.',
+      'Elevated decks include additional setup/productivity allowance. Exterior railing access adds more labor when ladder work is required.',
       'Baluster count is a planning estimate from railing length and typical spacing; field verification controls.',
       'Repair hours are an explicit allowance and should be adjusted after inspection.',
       'Customer approval is required before this proposal becomes customer-facing.'
     ],
     flags:[
       ...(input.condition==='heavy'?['Heavy condition selected; prep labor may vary materially after washing/sanding begins.']:[]),
-      ...(repairHours===0?['No repair labor allowance entered. Add one if board/rail repairs are expected.']:[])
+      ...(repairHours===0?['No repair labor allowance entered. Add one if board/rail repairs are expected.']:[]),
+      ...(elevationClass==='elevated' ? ['Elevation inferred at about '+estimatedDeckHeightFt.toFixed(1)+' ft from stair count; elevated-access allowance included.'] : []),
+      ...(effectiveRailingAccess==='ladder' ? ['Ladder/exterior access selected for wood railing; additional railing access labor included.'] : [])
     ]
   };
 }
@@ -159,6 +181,8 @@ Deck area: ${base.measurements.deckAreaSqFt} sq ft.
 Calculated railing: ${base.measurements.railingLf} LF, material ${input.railingMaterial}.
 Estimated balusters: ${base.measurements.estimatedBalusterCount}.
 Total stair tread width: ${base.measurements.totalTreadWidthFt} ft across ${input.stairCount} treads.
+Estimated deck height from stairs: ${base.measurements.estimatedDeckHeightFt} ft (${base.measurements.elevationClass}).
+Railing access assumption: ${base.measurements.railingAccess}.
 Scope: ${input.scopeText||'Deck cleaning, repairs, sanding and staining'}.
 Be conservative. If photos are insufficient, labor_adjustment_hours must be 0.`;
 
@@ -206,6 +230,7 @@ export async function POST(req:Request){
       stairOpeningFt:Number(input.stairOpeningFt||0),
       railingMaterial:input.railingMaterial||'wood',
       stairCount:Number(input.stairCount||0),stairWidthFt:Number(input.stairWidthFt||0),
+      railingAccess:input.railingAccess||'auto',
       condition:input.condition||'moderate',repairHours:Number(input.repairHours||0),
       coats:Number(input.coats||2),laborRate:Number(input.laborRate||120),
       stainCostPerGallon:Number(input.stainCostPerGallon||55),
