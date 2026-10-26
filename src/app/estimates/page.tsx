@@ -859,7 +859,7 @@ export default function Estimates(){
           <div className="group-head">
             <div>
               <h3 className="section-title" style={{marginBottom:2}}>Proposed estimate</h3>
-              <div className="secondary">{proposal.source==='deterministic+vision'?'Measurements + photo analysis':'Measurements + estimating model'} · {proposal.measurements.deckAreaSqFt.toFixed(0)} sq ft deck · {proposal.measurements.railingLf.toFixed(0)} LF railing · {proposal.measurements.totalTreadWidthFt.toFixed(0)} ft cumulative tread width · ~{proposal.measurements.estimatedDeckHeightFt.toFixed(1)} ft high ({proposal.measurements.elevationClass}, {proposal.measurements.elevationSource==='manual'?'manual':'inferred'})</div>
+              <div className="secondary">{proposal.source==='deterministic+vision'?'Measurements + photo analysis':'Measurements + estimating model'} · {Number(proposal.measurements.deckAreaSqFt ?? 0).toFixed(0)} sq ft deck · {Number(proposal.measurements.railingLf ?? 0).toFixed(0)} LF railing · {Number(proposal.measurements.totalTreadWidthFt ?? 0).toFixed(0)} ft cumulative tread width · ~{Number(proposal.measurements.estimatedDeckHeightFt ?? 0).toFixed(1)} ft high ({proposal.measurements.elevationClass}, {proposal.measurements.elevationSource==='manual'?'manual':'inferred'})</div>
             </div>
             <div className="metric-value money">${proposal.subtotal.toFixed(2)}</div>
           </div>
