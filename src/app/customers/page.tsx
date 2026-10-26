@@ -15,6 +15,7 @@ type Customer = {
 };
 
 type PhoneDraft = {
+  id?: string;
   phone_type: 'mobile' | 'home' | 'work' | 'office' | 'fax' | 'other';
   phone_number: string;
   is_primary: boolean;
@@ -28,26 +29,30 @@ const emptyPhone = (): PhoneDraft => ({
   sms_capable:true
 });
 
+const blankForm = {
+  account_type:'residential',
+  first_name:'',
+  last_name:'',
+  company_name:'',
+  email:'',
+  address1:'',
+  address2:'',
+  city:'',
+  state:'NJ',
+  postal_code:''
+};
+
 export default function Customers(){
   const supabase = useMemo(() => createClient(), []);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [editingId,setEditingId] = useState<string | null>(null);
+  const [editingPropertyId,setEditingPropertyId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [phones,setPhones] = useState<PhoneDraft[]>([emptyPhone()]);
-  const [form, setForm] = useState({
-    account_type:'residential',
-    first_name:'',
-    last_name:'',
-    company_name:'',
-    email:'',
-    address1:'',
-    address2:'',
-    city:'',
-    state:'NJ',
-    postal_code:''
-  });
+  const [form, setForm] = useState({...blankForm});
 
   async function load() {
     setMessage('');
@@ -86,47 +91,112 @@ export default function Customers(){
   useEffect(() => { void load(); }, []);
 
   function resetForm(){
-    setForm({
-      account_type:'residential',
-      first_name:'',
-      last_name:'',
-      company_name:'',
-      email:'',
-      address1:'',
-      address2:'',
-      city:'',
-      state:'NJ',
-      postal_code:''
-    });
+    setForm({...blankForm});
     setPhones([emptyPhone()]);
+    setEditingId(null);
+    setEditingPropertyId(null);
   }
 
-  async function addCustomer(e: FormEvent) {
+  async function openEdit(customer:Customer){
+    setBusy(true);
+    setMessage('');
+
+    const [{data:phoneData,error:phoneError},{data:propertyData,error:propertyError}] = await Promise.all([
+      supabase.from('customer_phones')
+        .select('id,phone_type,phone_number,is_primary,sms_capable')
+        .eq('customer_id',customer.id)
+        .order('is_primary',{ascending:false}),
+      supabase.from('properties')
+        .select('id,address1,address2,city,state,postal_code')
+        .eq('customer_id',customer.id)
+        .order('created_at',{ascending:true})
+        .limit(1)
+    ]);
+
+    if(phoneError || propertyError){
+      setMessage(phoneError?.message || propertyError?.message || 'Unable to load customer details.');
+      setBusy(false);
+      return;
+    }
+
+    const property=propertyData?.[0];
+    setEditingId(customer.id);
+    setEditingPropertyId(property?.id ?? null);
+    setForm({
+      account_type:customer.account_type || 'residential',
+      first_name:customer.first_name ?? '',
+      last_name:customer.last_name ?? '',
+      company_name:customer.company_name ?? '',
+      email:customer.email ?? '',
+      address1:property?.address1 ?? '',
+      address2:property?.address2 ?? '',
+      city:property?.city ?? '',
+      state:property?.state ?? 'NJ',
+      postal_code:property?.postal_code ?? ''
+    });
+    setPhones(phoneData?.length ? (phoneData as PhoneDraft[]) : [emptyPhone()]);
+    setShowForm(true);
+    setBusy(false);
+  }
+
+  async function saveCustomer(e: FormEvent) {
     e.preventDefault();
     if (!organizationId) return;
     setBusy(true);
     setMessage('');
 
     const isResidential = form.account_type === 'residential';
+    let customerId=editingId;
 
-    const { data: customer, error: customerError } = await supabase
-      .from('customers')
-      .insert({
-        organization_id: organizationId,
-        account_type: form.account_type,
-        first_name: form.first_name || null,
-        last_name: form.last_name || null,
-        company_name: isResidential ? null : (form.company_name || null),
-        email: form.email || null,
-        source: 'manual'
-      })
-      .select('id')
-      .single();
+    if(editingId){
+      const { error }=await supabase.from('customers').update({
+        account_type:form.account_type,
+        first_name:form.first_name || null,
+        last_name:form.last_name || null,
+        company_name:isResidential ? null : (form.company_name || null),
+        email:form.email || null
+      }).eq('id',editingId);
 
-    if (customerError || !customer) {
-      setMessage(customerError?.message || 'Unable to create customer.');
+      if(error){
+        setMessage(error.message);
+        setBusy(false);
+        return;
+      }
+    } else {
+      const { data: customer, error: customerError } = await supabase
+        .from('customers')
+        .insert({
+          organization_id: organizationId,
+          account_type: form.account_type,
+          first_name: form.first_name || null,
+          last_name: form.last_name || null,
+          company_name: isResidential ? null : (form.company_name || null),
+          email: form.email || null,
+          source: 'manual'
+        })
+        .select('id')
+        .single();
+
+      if (customerError || !customer) {
+        setMessage(customerError?.message || 'Unable to create customer.');
+        setBusy(false);
+        return;
+      }
+      customerId=customer.id;
+    }
+
+    if(!customerId){
       setBusy(false);
       return;
+    }
+
+    if(editingId){
+      const { error:deletePhoneError }=await supabase.from('customer_phones').delete().eq('customer_id',customerId);
+      if(deletePhoneError){
+        setMessage('Customer saved, but phone update failed: '+deletePhoneError.message);
+        setBusy(false);
+        return;
+      }
     }
 
     const validPhones = phones.filter(p => p.phone_number.trim());
@@ -134,7 +204,7 @@ export default function Customers(){
       const { error: phoneError } = await supabase.from('customer_phones').insert(
         validPhones.map(p => ({
           organization_id: organizationId,
-          customer_id: customer.id,
+          customer_id: customerId,
           phone_type: p.phone_type,
           phone_number: p.phone_number.trim(),
           is_primary: p.is_primary,
@@ -143,26 +213,30 @@ export default function Customers(){
       );
 
       if (phoneError) {
-        setMessage('Customer created, but phone numbers failed to save: ' + phoneError.message);
+        setMessage('Customer saved, but phone numbers failed to save: ' + phoneError.message);
         setBusy(false);
         return;
       }
     }
 
     if (form.address1.trim()) {
-      const { error: propertyError } = await supabase.from('properties').insert({
+      const propertyPayload={
         organization_id: organizationId,
-        customer_id: customer.id,
+        customer_id: customerId,
         label: isResidential ? 'Home' : 'Primary site',
         address1: form.address1.trim(),
         address2: form.address2.trim() || null,
         city: form.city.trim() || null,
         state: form.state.trim() || null,
         postal_code: form.postal_code.trim() || null
-      });
+      };
 
-      if (propertyError) {
-        setMessage('Customer created, but address failed to save: ' + propertyError.message);
+      const propertyResult=editingPropertyId
+        ? await supabase.from('properties').update(propertyPayload).eq('id',editingPropertyId)
+        : await supabase.from('properties').insert(propertyPayload);
+
+      if (propertyResult.error) {
+        setMessage('Customer saved, but address failed to save: ' + propertyResult.error.message);
         setBusy(false);
         return;
       }
@@ -185,11 +259,16 @@ export default function Customers(){
 
     <div className="card">
       <div className="actions">
-        <button className="btn btn-primary" onClick={() => setShowForm(v => !v)}>+ Add customer</button>
-        <button className="btn btn-secondary" type="button">Import contacts</button>
+        <button className="btn btn-primary" onClick={() => {resetForm();setShowForm(true)}}>+ Add customer</button>
+        <button className="btn btn-secondary" type="button" disabled title="CSV import is next on the migration roadmap">Import contacts</button>
       </div>
 
-      {showForm && <form onSubmit={addCustomer} style={{marginTop:16}}>
+      {showForm && <form onSubmit={saveCustomer} style={{marginTop:16}}>
+        <div className="group-head">
+          <strong>{editingId ? 'Edit customer' : 'New customer'}</strong>
+          {editingId && <span className="badge">Editing</span>}
+        </div>
+
         <div className="grid grid-2">
           <label>
             <div className="secondary">Account type</div>
@@ -243,7 +322,7 @@ export default function Customers(){
         </div>
 
         <div className="actions" style={{marginTop:12}}>
-          <button className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Save customer'}</button>
+          <button className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : editingId ? 'Save changes' : 'Save customer'}</button>
           <button className="btn btn-secondary" type="button" onClick={()=>{resetForm();setShowForm(false)}}>Cancel</button>
         </div>
       </form>}
@@ -257,9 +336,12 @@ export default function Customers(){
           return <div className="list-item" key={c.id}>
             <div>
               <div className="primary">#{c.customer_number ?? '—'} · {name}</div>
-              <div className="secondary">{c.account_type.replace('_',' ')}{c.email ? ' · ' + c.email : ''}</div>
+              <div className="secondary">{c.account_type.replaceAll('_',' ')}{c.email ? ' · ' + c.email : ''}</div>
             </div>
-            <span className="badge">Customer</span>
+            <div className="actions">
+              <span className="badge">Customer</span>
+              <button className="btn btn-secondary" onClick={()=>openEdit(c)} disabled={busy}>Edit</button>
+            </div>
           </div>;
         })}
       </div>
