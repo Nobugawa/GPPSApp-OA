@@ -20,6 +20,13 @@ type Job = {
   customers?: Customer | null;
 };
 
+type ExistingPhoto = {
+  id:string;
+  filename:string;
+  attachment_type:string | null;
+  url:string;
+};
+
 const blankForm = {
   customer_id:'',
   title:'',
@@ -38,6 +45,8 @@ export default function Jobs(){
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [photos,setPhotos] = useState<File[]>([]);
+  const [existingPhotos,setExistingPhotos] = useState<ExistingPhoto[]>([]);
+  const [loadingPhotos,setLoadingPhotos] = useState(false);
   const [form, setForm] = useState({...blankForm});
 
   async function load() {
@@ -126,11 +135,46 @@ export default function Jobs(){
     setEditingId(null);
     setForm({...blankForm});
     setPhotos([]);
+    setExistingPhotos([]);
     setShowForm(true);
     setMessage('');
   }
 
-  function openEdit(job:Job){
+  async function loadExistingPhotos(jobId:string){
+    setLoadingPhotos(true);
+
+    const { data,error }=await supabase
+      .from('attachments')
+      .select('id,filename,bucket,object_path,attachment_type,mime_type')
+      .eq('job_id',jobId)
+      .order('created_at',{ascending:true});
+
+    if(error){
+      setMessage('Unable to load job photos: '+error.message);
+      setExistingPhotos([]);
+      setLoadingPhotos(false);
+      return;
+    }
+
+    const photoRows=(data ?? []).filter(row=>row.object_path && (!row.mime_type || row.mime_type.startsWith('image/')));
+    const signed=await Promise.all(photoRows.map(async row=>{
+      const { data:signedData }=await supabase.storage
+        .from(row.bucket || 'job-photos')
+        .createSignedUrl(row.object_path,3600);
+
+      return signedData?.signedUrl ? {
+        id:row.id,
+        filename:row.filename,
+        attachment_type:row.attachment_type,
+        url:signedData.signedUrl
+      } : null;
+    }));
+
+    setExistingPhotos(signed.filter(Boolean) as ExistingPhoto[]);
+    setLoadingPhotos(false);
+  }
+
+  async function openEdit(job:Job){
     setEditingId(job.id);
     setForm({
       customer_id:job.customer_id,
@@ -142,6 +186,7 @@ export default function Jobs(){
     setPhotos([]);
     setShowForm(true);
     setMessage('');
+    await loadExistingPhotos(job.id);
   }
 
   async function saveJob(e: FormEvent) {
@@ -294,6 +339,39 @@ export default function Jobs(){
             />
           </label>
 
+          {editingId && <div style={{gridColumn:'1 / -1'}}>
+            <div className="group-head">
+              <div>
+                <strong>Existing photos</strong>
+                <div className="secondary">Photos attached anywhere in this job—including estimate photos—stay visible here.</div>
+              </div>
+              <span className="badge">{loadingPhotos ? 'Loading…' : `${existingPhotos.length} photo${existingPhotos.length===1?'':'s'}`}</span>
+            </div>
+
+            {!loadingPhotos && existingPhotos.length===0 && <div className="secondary">No photos are attached to this job yet.</div>}
+
+            {existingPhotos.length>0 && <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:10,marginTop:10}}>
+              {existingPhotos.map(photo=><a
+                key={photo.id}
+                href={photo.url}
+                target="_blank"
+                rel="noreferrer"
+                title={photo.filename}
+                style={{display:'block',border:'1px solid #dfe4ea',borderRadius:12,overflow:'hidden',background:'white'}}
+              >
+                <img
+                  src={photo.url}
+                  alt={photo.filename}
+                  style={{display:'block',width:'100%',aspectRatio:'4 / 3',objectFit:'cover'}}
+                />
+                <div style={{padding:8}}>
+                  <div className="secondary" style={{whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{photo.filename}</div>
+                  {photo.attachment_type && <div className="secondary">{photo.attachment_type.replaceAll('_',' ')}</div>}
+                </div>
+              </a>)}
+            </div>}
+          </div>}
+
           <label style={{gridColumn:'1 / -1'}}>
             <div className="secondary">{editingId ? 'Add more job photos' : 'Job photos'}</div>
             <input
@@ -309,7 +387,7 @@ export default function Jobs(){
 
         <div className="actions" style={{marginTop:12}}>
           <button className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : editingId ? 'Save changes' : 'Save job'}</button>
-          <button className="btn btn-secondary" type="button" onClick={()=>{setShowForm(false);setEditingId(null);setPhotos([]);setForm({...blankForm})}}>Cancel</button>
+          <button className="btn btn-secondary" type="button" onClick={()=>{setShowForm(false);setEditingId(null);setPhotos([]);setExistingPhotos([]);setForm({...blankForm})}}>Cancel</button>
         </div>
       </form>}
 
