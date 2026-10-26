@@ -841,75 +841,68 @@ export default function Estimates(){
         <h2 className="section-title">Generate deck proposal</h2>
         <p className="secondary">Enter the measurements you know. Photos and the job scope provide context; you do not need to write a long description.</p>
 
-        <div className="grid grid-2">
-          <label><div className="secondary">Deck length (ft)</div><input type="number" min="0" step="0.1" value={estimatorForm.lengthFt} onChange={e=>setEstimatorForm({...estimatorForm,lengthFt:e.target.value})} style={inputStyle}/></label>
-          <label><div className="secondary">Deck width (ft)</div><input type="number" min="0" step="0.1" value={estimatorForm.widthFt} onChange={e=>setEstimatorForm({...estimatorForm,widthFt:e.target.value})} style={inputStyle}/></label>
-          <label><div className="secondary">Railed long sides</div>
-            <select value={estimatorForm.longRailSides} onChange={e=>setEstimatorForm({...estimatorForm,longRailSides:e.target.value})} style={inputStyle}>
-              <option value="0">0</option><option value="1">1</option><option value="2">2</option>
-            </select>
-          </label>
-          <label><div className="secondary">Railed short sides</div>
-            <select value={estimatorForm.shortRailSides} onChange={e=>setEstimatorForm({...estimatorForm,shortRailSides:e.target.value})} style={inputStyle}>
-              <option value="0">0</option><option value="1">1</option><option value="2">2</option>
-            </select>
-          </label>
-          <label><div className="secondary">Stair opening in railing (ft)</div><input type="number" min="0" step="0.5" value={estimatorForm.stairOpeningFt} onChange={e=>setEstimatorForm({...estimatorForm,stairOpeningFt:e.target.value})} style={inputStyle}/></label>
-          <label><div className="secondary">Railing / baluster material</div>
-            <select value={estimatorForm.railingMaterial} onChange={e=>setEstimatorForm({...estimatorForm,railingMaterial:e.target.value as 'wood'|'pvc'|'none'})} style={inputStyle}>
-              <option value="wood">Wood — clean/sand/stain</option>
-              <option value="pvc">PVC/composite — clean only</option>
-              <option value="none">No railing</option>
-            </select>
-          </label>
-          <label><div className="secondary">Number of stair treads</div><input type="number" min="0" step="1" value={estimatorForm.stairCount} onChange={e=>setEstimatorForm({...estimatorForm,stairCount:e.target.value})} style={inputStyle}/></label>
-          <label><div className="secondary">Width of each tread (ft)</div><input type="number" min="0" step="0.25" value={estimatorForm.stairWidthFt} onChange={e=>setEstimatorForm({...estimatorForm,stairWidthFt:e.target.value})} style={inputStyle}/></label>
+        <div className="grid grid-2 estimate-basics">
+          <label><div className="field-label">Deck length</div><input type="number" min="0" step="0.1" value={estimatorForm.lengthFt} onChange={e=>setEstimatorForm({...estimatorForm,lengthFt:e.target.value})} placeholder="ft" style={inputStyle}/></label>
+          <label><div className="field-label">Deck width</div><input type="number" min="0" step="0.1" value={estimatorForm.widthFt} onChange={e=>setEstimatorForm({...estimatorForm,widthFt:e.target.value})} placeholder="ft" style={inputStyle}/></label>
+          <label><div className="field-label">Stair treads</div><input type="number" min="0" step="1" value={estimatorForm.stairCount} onChange={e=>setEstimatorForm({...estimatorForm,stairCount:e.target.value})} style={inputStyle}/></label>
+          <label><div className="field-label">Tread width</div><input type="number" min="0" step="0.25" value={estimatorForm.stairWidthFt} onChange={e=>setEstimatorForm({...estimatorForm,stairWidthFt:e.target.value})} placeholder="ft" style={inputStyle}/></label>
           <label>
-            <div className="secondary">Deck height above grade (ft) — optional override</div>
-            <input type="number" min="0" step="0.5" value={estimatorForm.deckHeightFt} onChange={e=>setEstimatorForm({...estimatorForm,deckHeightFt:e.target.value})} placeholder="Leave blank to infer from stairs" style={inputStyle}/>
-            <div className="secondary">Measure from the finished deck walking surface down to the grade directly below the work area.</div>
+            <div className="field-label">Deck height above grade</div>
+            <input type="number" min="0" step="0.5" value={estimatorForm.deckHeightFt} onChange={e=>setEstimatorForm({...estimatorForm,deckHeightFt:e.target.value})} placeholder="Optional — inferred from stairs" style={inputStyle}/>
+            <div className="field-help">Walking surface to grade directly below.</div>
           </label>
-          <label><div className="secondary">Exterior railing access</div>
-            <select value={estimatorForm.railingAccess} onChange={e=>setEstimatorForm({...estimatorForm,railingAccess:e.target.value as 'auto'|'topside'|'mixed'|'ladder'})} style={inputStyle}>
-              <option value="auto">Auto from stairs/elevation</option>
-              <option value="topside">Reachable from deck/topside</option>
-              <option value="mixed">Some exterior/ladder access</option>
-              <option value="ladder">Mostly ladder/exterior access</option>
+          <label><div className="field-label">Surface condition</div>
+            <select value={estimatorForm.condition} onChange={e=>setEstimatorForm({...estimatorForm,condition:e.target.value as 'light'|'moderate'|'heavy'})} style={inputStyle}>
+              <option value="light">Light prep</option><option value="moderate">Moderate prep</option><option value="heavy">Heavy prep</option>
             </select>
           </label>
-          <label style={{gridColumn:'1 / -1'}}>
-            <div className="secondary">Site access / terrain notes</div>
-            <textarea
-              rows={3}
-              value={estimatorForm.terrainAccessNotes}
-              onChange={e=>setEstimatorForm({...estimatorForm,terrainAccessNotes:e.target.value})}
-              placeholder="Example: steep slope below rear rail; shrubs along left side; retaining wall near ladder setup; narrow side-yard access."
-              style={{...inputStyle,resize:'vertical'}}
-            />
-          </label>
-          <div style={{gridColumn:'1 / -1'}}>
-            <div className="secondary">Site access / terrain photos</div>
-            <div className="photo-dropzone" onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();setAccessPhotos(prev=>[...prev,...Array.from(e.dataTransfer.files).filter(file=>['image/jpeg','image/png','image/webp'].includes(file.type))])}}>
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                multiple
-                onChange={e=>setAccessPhotos(prev=>[...prev,...Array.from(e.target.files ?? [])])}
-                style={{width:'100%'}}
-              />
-              <div className="secondary" style={{marginTop:6}}>
-                {accessPhotos.length ? `${accessPhotos.length} access/terrain photo(s) selected` : 'Use photos to show slopes, plants, walls, fences, ladder footing, or restricted access.'}
-              </div>
-            </div>
-            {accessPhotos.length>0 && <button
-              className="btn btn-secondary"
-              type="button"
-              style={{marginTop:8}}
-              disabled={busy}
-              onClick={async ()=>{
+        </div>
+
+        <details className="advanced-panel" style={{marginTop:14}}>
+          <summary>More job details</summary>
+          <p className="secondary">Railing, access, terrain, repair allowance and pricing defaults. Change these only when they matter.</p>
+          <div className="grid grid-2" style={{marginTop:12}}>
+            <label><div className="field-label">Railed long sides</div>
+              <select value={estimatorForm.longRailSides} onChange={e=>setEstimatorForm({...estimatorForm,longRailSides:e.target.value})} style={inputStyle}>
+                <option value="0">0</option><option value="1">1</option><option value="2">2</option>
+              </select>
+            </label>
+            <label><div className="field-label">Railed short sides</div>
+              <select value={estimatorForm.shortRailSides} onChange={e=>setEstimatorForm({...estimatorForm,shortRailSides:e.target.value})} style={inputStyle}>
+                <option value="0">0</option><option value="1">1</option><option value="2">2</option>
+              </select>
+            </label>
+            <label><div className="field-label">Stair opening in railing</div><input type="number" min="0" step="0.5" value={estimatorForm.stairOpeningFt} onChange={e=>setEstimatorForm({...estimatorForm,stairOpeningFt:e.target.value})} placeholder="ft" style={inputStyle}/></label>
+            <label><div className="field-label">Railing / balusters</div>
+              <select value={estimatorForm.railingMaterial} onChange={e=>setEstimatorForm({...estimatorForm,railingMaterial:e.target.value as 'wood'|'pvc'|'none'})} style={inputStyle}>
+                <option value="wood">Wood — clean/sand/stain</option>
+                <option value="pvc">PVC/composite — clean only</option>
+                <option value="none">No railing</option>
+              </select>
+            </label>
+            <label><div className="field-label">Exterior access</div>
+              <select value={estimatorForm.railingAccess} onChange={e=>setEstimatorForm({...estimatorForm,railingAccess:e.target.value as 'auto'|'topside'|'mixed'|'ladder'})} style={inputStyle}>
+                <option value="auto">Auto from elevation</option>
+                <option value="topside">Reachable from deck</option>
+                <option value="mixed">Some ladder/exterior work</option>
+                <option value="ladder">Mostly ladder/exterior work</option>
+              </select>
+            </label>
+            <label><div className="field-label">Repair allowance</div><input type="number" min="0" step="0.25" value={estimatorForm.repairHours} onChange={e=>setEstimatorForm({...estimatorForm,repairHours:e.target.value})} placeholder="hours" style={inputStyle}/></label>
+            <label><div className="field-label">Stain coats</div><input type="number" min="1" max="4" step="1" value={estimatorForm.coats} onChange={e=>setEstimatorForm({...estimatorForm,coats:e.target.value})} style={inputStyle}/></label>
+            <label><div className="field-label">Labor rate</div><input type="number" min="0" step="1" value={estimatorForm.laborRate} onChange={e=>setEstimatorForm({...estimatorForm,laborRate:e.target.value})} style={inputStyle}/></label>
+            <label><div className="field-label">Stain cost / gallon</div><input type="number" min="0" step="1" value={estimatorForm.stainCostPerGallon} onChange={e=>setEstimatorForm({...estimatorForm,stainCostPerGallon:e.target.value})} style={inputStyle}/></label>
+            <label style={{gridColumn:'1 / -1'}}>
+              <div className="field-label">Site access / terrain notes</div>
+              <textarea rows={3} value={estimatorForm.terrainAccessNotes} onChange={e=>setEstimatorForm({...estimatorForm,terrainAccessNotes:e.target.value})} placeholder="Slope, shrubs, retaining wall, fence, poor ladder footing, narrow access…" style={{...inputStyle,resize:'vertical'}}/>
+            </label>
+            <div style={{gridColumn:'1 / -1'}}>
+              <div className="field-label">Access / terrain photos</div>
+              <input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={e=>setAccessPhotos(prev=>[...prev,...Array.from(e.target.files ?? [])])} style={inputStyle}/>
+              {accessPhotos.length>0 && <button className="btn btn-secondary" type="button" style={{marginTop:8}} disabled={busy} onClick={async ()=>{
                 if(!estimate || !organizationId) return;
                 setBusy(true);
-                setMessage(`Uploading ${accessPhotos.length} site-access photo(s)…`);
+                setMessage(`Uploading ${accessPhotos.length} access photo(s)…`);
                 try{
                   for(const file of accessPhotos){
                     const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
@@ -917,40 +910,21 @@ export default function Estimates(){
                     const {error:uploadError}=await supabase.storage.from('job-photos').upload(path,file,{upsert:false,contentType:file.type});
                     if(uploadError) throw uploadError;
                     const {error:attachmentError}=await supabase.from('attachments').insert({
-                      organization_id:organizationId,
-                      job_id:estimate.job_id,
-                      estimate_id:estimate.id,
-                      storage_provider:'supabase',
-                      bucket:'job-photos',
-                      object_path:path,
-                      filename:file.name,
-                      mime_type:file.type||null,
-                      byte_size:file.size,
-                      attachment_type:'site_access_photo',
-                      customer_visible:false
+                      organization_id:organizationId,job_id:estimate.job_id,estimate_id:estimate.id,
+                      storage_provider:'supabase',bucket:'job-photos',object_path:path,filename:file.name,
+                      mime_type:file.type||null,byte_size:file.size,attachment_type:'site_access_photo',customer_visible:false
                     });
                     if(attachmentError) throw attachmentError;
                   }
                   setSavedPhotoCount(prev=>prev+accessPhotos.length);
                   setAccessPhotos([]);
-                  setMessage('Site access / terrain photos saved to this estimate.');
-                }catch(err){
-                  setMessage(err instanceof Error ? err.message : 'Site access photo upload failed.');
-                }
+                  setMessage('Access photos saved.');
+                }catch(err){setMessage(err instanceof Error ? err.message : 'Access photo upload failed.');}
                 setBusy(false);
-              }}
-            >Upload access photos</button>}
+              }}>Upload {accessPhotos.length} access photo{accessPhotos.length===1?'':'s'}</button>}
+            </div>
           </div>
-          <label><div className="secondary">Surface condition</div>
-            <select value={estimatorForm.condition} onChange={e=>setEstimatorForm({...estimatorForm,condition:e.target.value as 'light'|'moderate'|'heavy'})} style={inputStyle}>
-              <option value="light">Light prep</option><option value="moderate">Moderate prep</option><option value="heavy">Heavy prep</option>
-            </select>
-          </label>
-          <label><div className="secondary">Repair labor allowance (hours)</div><input type="number" min="0" step="0.25" value={estimatorForm.repairHours} onChange={e=>setEstimatorForm({...estimatorForm,repairHours:e.target.value})} style={inputStyle}/></label>
-          <label><div className="secondary">Number of stain coats</div><input type="number" min="1" max="4" step="1" value={estimatorForm.coats} onChange={e=>setEstimatorForm({...estimatorForm,coats:e.target.value})} style={inputStyle}/></label>
-          <label><div className="secondary">GPPS hourly labor rate</div><input type="number" min="0" step="1" value={estimatorForm.laborRate} onChange={e=>setEstimatorForm({...estimatorForm,laborRate:e.target.value})} style={inputStyle}/></label>
-          <label><div className="secondary">Stain cost per gallon</div><input type="number" min="0" step="1" value={estimatorForm.stainCostPerGallon} onChange={e=>setEstimatorForm({...estimatorForm,stainCostPerGallon:e.target.value})} style={inputStyle}/></label>
-        </div>
+        </details>
 
         <div className="actions" style={{marginTop:16}}>
           <button className="btn btn-primary" type="button" onClick={generateProposal} disabled={busy}>{busy?'Generating…':'Generate proposal'}</button>
@@ -959,7 +933,7 @@ export default function Estimates(){
         {proposal && <div className="card" style={{marginTop:16,boxShadow:'none'}}>
           <div className="group-head">
             <div>
-              <h3 className="section-title" style={{marginBottom:2}}>Proposed estimate</h3>
+              <h3 className="section-title" style={{marginBottom:2}}>Recommended estimate</h3>
               <div className="secondary">{proposal.source==='deterministic+vision'?'Measurements + photo analysis':'Measurements + estimating model'} · {Number(proposal.measurements.deckAreaSqFt ?? 0).toFixed(0)} sq ft deck · {Number(proposal.measurements.railingLf ?? 0).toFixed(0)} LF railing · {Number(proposal.measurements.totalTreadWidthFt ?? 0).toFixed(0)} ft cumulative tread width · ~{Number(proposal.measurements.estimatedDeckHeightFt ?? 0).toFixed(1)} ft high ({proposal.measurements.elevationClass}, {proposal.measurements.elevationSource==='manual'?'manual':'inferred'})</div>
             </div>
             <div className="metric-value money">${proposal.subtotal.toFixed(2)}</div>
@@ -992,17 +966,16 @@ export default function Estimates(){
           </div>
 
           <div className="actions" style={{marginTop:16}}>
-            <button className="btn btn-primary" type="button" onClick={applyProposal} disabled={busy}>Apply proposal to estimate</button>
+            <button className="btn btn-primary" type="button" onClick={applyProposal} disabled={busy}>Use this estimate</button>
             {items.length>0 && <span className="secondary">Applying again replaces prior estimator-generated lines while preserving manual lines.</span>}
           </div>
         </div>}
       </section>
 
       <div className="quote-builder">
-        <section className="card">
-          <p className="kicker">Step 3</p>
-          <h2 className="section-title">Review the applied estimate</h2>
-          <p className="secondary">Step 2 creates a proposal only. When you click “Apply proposal to estimate,” those proposed lines become the saved estimate here. Step 3 is simply where you fine-tune them, remove anything you do not want, or add a missing labor/part/material line before sending it to the customer.</p>
+        <details className="card advanced-panel">
+          <summary>Advanced line-item editing</summary>
+          <p className="secondary">Use this only when you want to change the calculated labor/material lines or add a special item.</p>
 
           <div className="actions" style={{marginBottom:14}}>
             {(['labor','part','material','other'] as EstimateItem['item_type'][]).map(type=><button key={type} className={itemForm.item_type===type?'btn btn-primary':'btn btn-secondary'} type="button" onClick={()=>setItemForm({...itemForm,item_type:type})}>{type==='labor'?'Labor':type==='part'?'Part':type==='material'?'Material':'Other'}</button>)}
@@ -1024,7 +997,7 @@ export default function Estimates(){
               <div style={{textAlign:'right'}}><div className="primary money">${(Number(item.quantity)*Number(item.unit_price)).toFixed(2)}</div><button type="button" className="btn btn-secondary" style={{marginTop:6,padding:'6px 9px'}} onClick={()=>removeItem(item.id)}>Remove</button></div>
             </div>)}
           </div>
-        </section>
+        </details>
 
         <aside>
           <section className="card">
