@@ -23,6 +23,7 @@ type Draft = {
   subtotal:number;
   tax:number;
   total:number;
+  estimator_output?: { subtotal?: number } | null;
   created_at:string;
   jobs?: {
     title:string;
@@ -187,7 +188,7 @@ export default function Estimates(){
         .order('created_at',{ascending:false}),
       supabase
         .from('estimates')
-        .select('id,job_id,estimate_number,status,subtotal,tax,total,created_at,jobs(title,customers(first_name,last_name,company_name))')
+        .select('id,job_id,estimate_number,status,subtotal,tax,total,estimator_output,created_at,jobs(title,customers(first_name,last_name,company_name))')
         .eq('organization_id',orgId)
         .eq('status','draft')
         .order('created_at',{ascending:false}),
@@ -691,7 +692,10 @@ export default function Estimates(){
               </div>
             </div>
             <div className="actions">
-              <div className="primary money">${Number(draft.total).toFixed(2)}</div>
+              <div style={{textAlign:'right'}}>
+                <div className="primary money">Applied: ${Number(draft.total).toFixed(2)}</div>
+                {draft.estimator_output?.subtotal != null && Number(draft.estimator_output.subtotal)!==Number(draft.total) && <div className="secondary">Pending proposal: ${Number(draft.estimator_output.subtotal).toFixed(2)}</div>}
+              </div>
               <button className="btn btn-primary" type="button" onClick={()=>openDraft(draft)}>Continue draft</button>
             </div>
           </div>)}
