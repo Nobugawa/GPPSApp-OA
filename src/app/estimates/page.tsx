@@ -540,14 +540,26 @@ export default function Estimates(){
   async function applyProposal(){
     if (!organizationId || !estimate || !proposal) return;
 
-    if (items.length>0) {
-      setMessage('This estimate already has line items. Remove them first or keep adjusting manually before applying a generated proposal.');
-      return;
-    }
-
     setBusy(true);
     setSaveState('saving');
-    setMessage('Applying proposal to Estimate #' + (estimate.estimate_number ?? '') + '…');
+    setMessage('Updating estimator lines on Estimate #' + (estimate.estimate_number ?? '') + '…');
+
+    const estimatorItems=items.filter(item=>(item.internal_description ?? '').startsWith('Estimator proposal'));
+    const manualItems=items.filter(item=>!(item.internal_description ?? '').startsWith('Estimator proposal'));
+
+    if (estimatorItems.length>0) {
+      const { error:deleteError }=await supabase
+        .from('estimate_items')
+        .delete()
+        .in('id',estimatorItems.map(item=>item.id));
+
+      if (deleteError) {
+        setSaveState('error');
+        setMessage('Could not replace the previous estimator proposal: '+deleteError.message);
+        setBusy(false);
+        return;
+      }
+    }
 
     const { data,error }=await supabase
       .from('estimate_items')
@@ -560,7 +572,7 @@ export default function Estimates(){
         quantity:line.quantity,
         unit_cost:line.internalCost ?? null,
         unit_price:line.unitPrice,
-        sort_order:index
+        sort_order:manualItems.length+index
       })))
       .select('id,item_type,customer_description,internal_description,quantity,unit_cost,unit_price,sort_order');
 
@@ -568,14 +580,17 @@ export default function Estimates(){
       setSaveState('error');
       setMessage(error?.message || 'Unable to apply proposal.');
       setBusy(false);
+      await loadItems(estimate.id);
       return;
     }
 
-    const next=data as EstimateItem[];
+    const next=[...manualItems,...(data as EstimateItem[])];
     setItems(next);
     await recalcEstimate(estimate.id,next);
     setSaveState('saved');
-    setMessage('Proposal applied. Review the line items and adjust anything before sending to the customer.');
+    setMessage(estimatorItems.length
+      ? 'Previous estimator lines replaced with the new proposal. Manual lines, if any, were preserved.'
+      : 'Proposal applied. Review the line items and adjust anything before sending to the customer.');
     setBusy(false);
   }
 
@@ -891,8 +906,8 @@ export default function Estimates(){
           </div>
 
           <div className="actions" style={{marginTop:16}}>
-            <button className="btn btn-primary" type="button" onClick={applyProposal} disabled={busy || items.length>0}>Apply proposal to estimate</button>
-            {items.length>0 && <span className="secondary">Remove existing manual lines before applying a generated proposal.</span>}
+            <button className="btn btn-primary" type="button" onClick={applyProposal} disabled={busy}>Apply proposal to estimate</button>
+            {items.length>0 && <span className="secondary">Applying again replaces prior estimator-generated lines while preserving manual lines.</span>}
           </div>
         </div>}
       </section>
