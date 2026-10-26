@@ -127,6 +127,7 @@ const blankEstimator = {
   stairCount:'0',
   stairWidthFt:'3',
   deckHeightFt:'',
+  terrainAccessNotes:'',
   railingAccess:'auto' as 'auto'|'topside'|'mixed'|'ladder',
   condition:'moderate' as 'light'|'moderate'|'heavy',
   repairHours:'0',
@@ -145,6 +146,7 @@ export default function Estimates(){
   const [estimate,setEstimate] = useState<Estimate | null>(null);
   const [items,setItems] = useState<EstimateItem[]>([]);
   const [photos,setPhotos] = useState<File[]>([]);
+  const [accessPhotos,setAccessPhotos] = useState<File[]>([]);
   const [savedPhotoCount,setSavedPhotoCount] = useState(0);
   const [message,setMessage] = useState('');
   const [busy,setBusy] = useState(false);
@@ -265,6 +267,7 @@ export default function Estimates(){
         stairCount:String(input.stairCount ?? prev.stairCount),
         stairWidthFt:String(input.stairWidthFt ?? prev.stairWidthFt),
         deckHeightFt:input.deckHeightFt===null || input.deckHeightFt===undefined ? prev.deckHeightFt : String(input.deckHeightFt),
+        terrainAccessNotes:String(input.terrainAccessNotes ?? prev.terrainAccessNotes),
         railingAccess:(input.railingAccess as 'auto'|'topside'|'mixed'|'ladder') ?? prev.railingAccess,
         condition:(input.condition as 'light'|'moderate'|'heavy') ?? prev.condition,
         repairHours:String(input.repairHours ?? prev.repairHours),
@@ -471,6 +474,7 @@ export default function Estimates(){
       stairCount:Number(estimatorForm.stairCount || 0),
       stairWidthFt:Number(estimatorForm.stairWidthFt || 0),
       deckHeightFt:estimatorForm.deckHeightFt.trim()==='' ? null : Number(estimatorForm.deckHeightFt),
+      terrainAccessNotes:estimatorForm.terrainAccessNotes,
       railingAccess:estimatorForm.railingAccess,
       condition:estimatorForm.condition,
       repairHours:Number(estimatorForm.repairHours || 0),
@@ -706,7 +710,7 @@ export default function Estimates(){
           </div>
           <div style={{textAlign:'right'}}>
             <span className={saveState==='error'?'badge warn':'badge success'}>{saveState==='saving'?'Saving…':saveState==='error'?'Save issue':'Draft saved'}</span>
-            <div style={{marginTop:8}}><button className="btn btn-secondary" type="button" onClick={()=>{setEstimate(null);setItems([]);setPhotos([]);setProposal(null);setMessage('');void loadWorkspace();}}>Back to estimates</button></div>
+            <div style={{marginTop:8}}><button className="btn btn-secondary" type="button" onClick={()=>{setEstimate(null);setItems([]);setPhotos([]);setAccessPhotos([]);setProposal(null);setMessage('');void loadWorkspace();}}>Back to estimates</button></div>
           </div>
         </div>
         {message && <div className="secondary" style={{marginTop:10}}>{message}</div>}
@@ -740,7 +744,11 @@ export default function Estimates(){
           </label>
           <label><div className="secondary">Number of stair treads</div><input type="number" min="0" step="1" value={estimatorForm.stairCount} onChange={e=>setEstimatorForm({...estimatorForm,stairCount:e.target.value})} style={inputStyle}/></label>
           <label><div className="secondary">Width of each tread (ft)</div><input type="number" min="0" step="0.25" value={estimatorForm.stairWidthFt} onChange={e=>setEstimatorForm({...estimatorForm,stairWidthFt:e.target.value})} style={inputStyle}/></label>
-          <label><div className="secondary">Deck height above grade (ft) — optional override</div><input type="number" min="0" step="0.5" value={estimatorForm.deckHeightFt} onChange={e=>setEstimatorForm({...estimatorForm,deckHeightFt:e.target.value})} placeholder="Leave blank to infer from stairs" style={inputStyle}/></label>
+          <label>
+            <div className="secondary">Deck height above grade (ft) — optional override</div>
+            <input type="number" min="0" step="0.5" value={estimatorForm.deckHeightFt} onChange={e=>setEstimatorForm({...estimatorForm,deckHeightFt:e.target.value})} placeholder="Leave blank to infer from stairs" style={inputStyle}/>
+            <div className="secondary">Measure from the finished deck walking surface down to the grade directly below the work area.</div>
+          </label>
           <label><div className="secondary">Exterior railing access</div>
             <select value={estimatorForm.railingAccess} onChange={e=>setEstimatorForm({...estimatorForm,railingAccess:e.target.value as 'auto'|'topside'|'mixed'|'ladder'})} style={inputStyle}>
               <option value="auto">Auto from stairs/elevation</option>
@@ -749,6 +757,70 @@ export default function Estimates(){
               <option value="ladder">Mostly ladder/exterior access</option>
             </select>
           </label>
+          <label style={{gridColumn:'1 / -1'}}>
+            <div className="secondary">Site access / terrain notes</div>
+            <textarea
+              rows={3}
+              value={estimatorForm.terrainAccessNotes}
+              onChange={e=>setEstimatorForm({...estimatorForm,terrainAccessNotes:e.target.value})}
+              placeholder="Example: steep slope below rear rail; shrubs along left side; retaining wall near ladder setup; narrow side-yard access."
+              style={{...inputStyle,resize:'vertical'}}
+            />
+          </label>
+          <div style={{gridColumn:'1 / -1'}}>
+            <div className="secondary">Site access / terrain photos</div>
+            <div className="photo-dropzone" onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();setAccessPhotos(prev=>[...prev,...Array.from(e.dataTransfer.files).filter(file=>['image/jpeg','image/png','image/webp'].includes(file.type))])}}>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                onChange={e=>setAccessPhotos(prev=>[...prev,...Array.from(e.target.files ?? [])])}
+                style={{width:'100%'}}
+              />
+              <div className="secondary" style={{marginTop:6}}>
+                {accessPhotos.length ? `${accessPhotos.length} access/terrain photo(s) selected` : 'Use photos to show slopes, plants, walls, fences, ladder footing, or restricted access.'}
+              </div>
+            </div>
+            {accessPhotos.length>0 && <button
+              className="btn btn-secondary"
+              type="button"
+              style={{marginTop:8}}
+              disabled={busy}
+              onClick={async ()=>{
+                if(!estimate || !organizationId) return;
+                setBusy(true);
+                setMessage(`Uploading ${accessPhotos.length} site-access photo(s)…`);
+                try{
+                  for(const file of accessPhotos){
+                    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+                    const path=`${organizationId}/estimates/${estimate.id}/access/${crypto.randomUUID()}-${safeName}`;
+                    const {error:uploadError}=await supabase.storage.from('job-photos').upload(path,file,{upsert:false,contentType:file.type});
+                    if(uploadError) throw uploadError;
+                    const {error:attachmentError}=await supabase.from('attachments').insert({
+                      organization_id:organizationId,
+                      job_id:estimate.job_id,
+                      estimate_id:estimate.id,
+                      storage_provider:'supabase',
+                      bucket:'job-photos',
+                      object_path:path,
+                      filename:file.name,
+                      mime_type:file.type||null,
+                      byte_size:file.size,
+                      attachment_type:'site_access_photo',
+                      customer_visible:false
+                    });
+                    if(attachmentError) throw attachmentError;
+                  }
+                  setSavedPhotoCount(prev=>prev+accessPhotos.length);
+                  setAccessPhotos([]);
+                  setMessage('Site access / terrain photos saved to this estimate.');
+                }catch(err){
+                  setMessage(err instanceof Error ? err.message : 'Site access photo upload failed.');
+                }
+                setBusy(false);
+              }}
+            >Upload access photos</button>}
+          </div>
           <label><div className="secondary">Surface condition</div>
             <select value={estimatorForm.condition} onChange={e=>setEstimatorForm({...estimatorForm,condition:e.target.value as 'light'|'moderate'|'heavy'})} style={inputStyle}>
               <option value="light">Light prep</option><option value="moderate">Moderate prep</option><option value="heavy">Heavy prep</option>
