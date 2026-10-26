@@ -17,6 +17,7 @@ type Job = {
 type Draft = {
   id:string;
   job_id:string;
+  estimate_number:string | null;
   status:string;
   subtotal:number;
   tax:number;
@@ -46,6 +47,7 @@ type EstimateItem = {
 type Estimate = {
   id:string;
   job_id:string;
+  estimate_number:string | null;
   status:string;
   subtotal:number;
   tax:number;
@@ -110,7 +112,7 @@ export default function Estimates(){
         .order('created_at',{ascending:false}),
       supabase
         .from('estimates')
-        .select('id,job_id,status,subtotal,tax,total,created_at,jobs(title,customers(first_name,last_name,company_name))')
+        .select('id,job_id,estimate_number,status,subtotal,tax,total,created_at,jobs(title,customers(first_name,last_name,company_name))')
         .eq('organization_id',orgId)
         .eq('status','draft')
         .order('created_at',{ascending:false})
@@ -161,6 +163,7 @@ export default function Estimates(){
     setEstimate({
       id:draft.id,
       job_id:draft.job_id,
+      estimate_number:draft.estimate_number,
       status:draft.status,
       subtotal:Number(draft.subtotal),
       tax:Number(draft.tax),
@@ -253,7 +256,7 @@ export default function Estimates(){
         tax:0,
         total:0
       })
-      .select('id,job_id,status,subtotal,tax,total,created_at')
+      .select('id,job_id,estimate_number,status,subtotal,tax,total,created_at')
       .single();
 
     if (error || !estimateData) {
@@ -390,7 +393,7 @@ export default function Estimates(){
         <div className="list">
           {drafts.map(draft=><div className="list-item" key={draft.id}>
             <div>
-              <div className="primary">{draft.jobs?.title || 'Untitled job'}</div>
+              <div className="primary">Estimate #{draft.estimate_number ?? '—'} · {draft.jobs?.title || 'Untitled job'}</div>
               <div className="secondary">
                 {customerName(draft.jobs?.customers)} · Saved {new Date(draft.created_at).toLocaleString()}
               </div>
@@ -460,7 +463,7 @@ export default function Estimates(){
           <div>
             <p className="kicker">Saved draft</p>
             <h2 className="section-title" style={{marginBottom:2}}>
-              {jobs.find(j=>j.id===estimate.job_id)?.title || 'Estimate draft'}
+              Estimate #{estimate.estimate_number ?? '—'} · {jobs.find(j=>j.id===estimate.job_id)?.title || 'Estimate draft'}
             </h2>
             <div className="secondary">{savedPhotoCount} saved photo(s) · {items.length} line item(s)</div>
           </div>
@@ -498,17 +501,17 @@ export default function Estimates(){
 
           <form onSubmit={addItem} className="grid grid-2">
             <label>
-              <div className="secondary">Quantity</div>
+              <div className="secondary">{itemForm.item_type==='labor' ? 'Hours' : 'Quantity'}</div>
               <input type="number" step="0.01" min="0.01" value={itemForm.quantity} onChange={e=>setItemForm({...itemForm,quantity:e.target.value})} style={inputStyle}/>
             </label>
 
             <label>
-              <div className="secondary">Customer unit price</div>
+              <div className="secondary">{itemForm.item_type==='labor' ? 'Hourly rate charged to customer' : 'Price per unit charged to customer'}</div>
               <input type="number" step="0.01" min="0" value={itemForm.unit_price} onChange={e=>setItemForm({...itemForm,unit_price:e.target.value})} required style={inputStyle}/>
             </label>
 
             <label style={{gridColumn:'1 / -1'}}>
-              <div className="secondary">Customer description</div>
+              <div className="secondary">Customer-facing description</div>
               <input value={itemForm.customer_description} onChange={e=>setItemForm({...itemForm,customer_description:e.target.value})} placeholder="e.g. Clean, sand and stain deck surface" style={inputStyle}/>
             </label>
 
@@ -518,7 +521,7 @@ export default function Estimates(){
             </label>
 
             <label>
-              <div className="secondary">Internal unit cost (optional)</div>
+              <div className="secondary">{itemForm.item_type==='labor' ? 'Internal labor cost per hour (optional)' : 'Internal cost per unit (optional)'}</div>
               <input type="number" step="0.01" min="0" value={itemForm.unit_cost} onChange={e=>setItemForm({...itemForm,unit_cost:e.target.value})} style={inputStyle}/>
             </label>
 
