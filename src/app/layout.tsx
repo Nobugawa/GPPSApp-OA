@@ -29,7 +29,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </aside>
             <div className="content-column">
               <main className="main">{children}</main>
-              <footer className="app-footer">GPPS Field v0.14</footer>
+              <footer className="app-footer">GPPS Field v0.15</footer>
             </div>
           </div>
           <nav className="bottom-nav">
