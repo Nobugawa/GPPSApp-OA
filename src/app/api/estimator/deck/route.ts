@@ -11,6 +11,7 @@ type EstimatorInput = {
   stairWidthFt:number;
   deckHeightFt:number|null;
   railingAccess:'topside'|'ladder'|'mixed'|'auto';
+  terrainAccessNotes:string;
   condition:'light'|'moderate'|'heavy';
   repairHours:number;
   coats:number;
@@ -153,6 +154,7 @@ function deterministicProposal(input:EstimatorInput){
       'Elevated decks include additional setup/productivity allowance. Exterior railing access adds more labor when ladder work is required.',
       'Baluster count is a planning estimate from railing length and typical spacing; field verification controls.',
       'Repair hours are an explicit allowance and should be adjusted after inspection.',
+      'Site access/terrain notes and photos are estimating inputs; unusual slopes, vegetation, retaining walls, fences or poor ladder footing can increase labor and risk.',
       'Customer approval is required before this proposal becomes customer-facing.'
     ],
     flags:[
@@ -190,6 +192,7 @@ Total stair tread width: ${base.measurements.totalTreadWidthFt} ft across ${inpu
 Deck height used: ${base.measurements.estimatedDeckHeightFt} ft (${base.measurements.elevationClass}, source ${base.measurements.elevationSource}).
 Railing access assumption: ${base.measurements.railingAccess}.
 Scope: ${input.scopeText||'Deck cleaning, repairs, sanding and staining'}.
+Site access / terrain notes: ${input.terrainAccessNotes||'None supplied'}.
 Be conservative. If photos are insufficient, labor_adjustment_hours must be 0.`;
 
   const response=await fetch('https://api.openai.com/v1/responses',{
@@ -238,6 +241,7 @@ export async function POST(req:Request){
       stairCount:Number(input.stairCount||0),stairWidthFt:Number(input.stairWidthFt||0),
       deckHeightFt:input.deckHeightFt===null || input.deckHeightFt===undefined ? null : Number(input.deckHeightFt),
       railingAccess:input.railingAccess||'auto',
+      terrainAccessNotes:input.terrainAccessNotes||'',
       condition:input.condition||'moderate',repairHours:Number(input.repairHours||0),
       coats:Number(input.coats||2),laborRate:Number(input.laborRate||120),
       stainCostPerGallon:Number(input.stainCostPerGallon||55),
