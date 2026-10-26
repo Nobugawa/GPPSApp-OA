@@ -89,7 +89,7 @@ export default function Invoices(){
 
   useEffect(()=>{void load();},[]);
 
-  function customerName(customer:EstimateChoice['jobs'] extends infer J ? any : never){
+  function customerName(customer:any){
     return customer?.company_name || [customer?.first_name,customer?.last_name].filter(Boolean).join(' ') || 'Customer';
   }
 
