@@ -144,7 +144,7 @@ export default function Components(){
   return <div>
     <p className="kicker">Canonical library</p>
     <h1 className="page-title">Labor, parts & materials</h1>
-    <p className="subtitle">Reuse clean canonical items instead of creating duplicate descriptions job after job.</p>
+    <p className="subtitle">Reuse clean canonical work tasks, parts and materials. Labor items describe the work itself—not the employee performing it.</p>
 
     <div className="grid grid-2">
       <section className="card">
@@ -177,7 +177,7 @@ export default function Components(){
           </select>
         </label>
 
-        <label><div className="secondary">Name</div>
+        <label><div className="secondary">{form.type==='labor' ? 'Labor task name' : 'Item name'}</div>
           <input required value={form.canonical_name} onChange={e=>setForm({...form,canonical_name:e.target.value})} style={inputStyle}/>
         </label>
 
