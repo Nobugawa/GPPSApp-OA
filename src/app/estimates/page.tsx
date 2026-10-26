@@ -6,6 +6,7 @@ import { createClient } from '../../lib/supabase/client';
 type Job = {
   id:string;
   title:string;
+  scope:string | null;
   customer_id:string;
   customers?: {
     first_name:string | null;
@@ -55,6 +56,46 @@ type Estimate = {
   created_at?:string;
 };
 
+type ProposalLine = {
+  type:'labor'|'material';
+  description:string;
+  quantity:number;
+  unit:string;
+  unitPrice:number;
+  internalCost?:number | null;
+};
+
+type Proposal = {
+  source:string;
+  measurements:{deckAreaSqFt:number;effectiveFinishAreaSqFt:number};
+  labor:{
+    setupHours:number;
+    cleaningHours:number;
+    sandingHours:number;
+    stainingHours:number;
+    repairHours:number;
+    totalHours:number;
+    hourlyRate:number;
+    visionAdjustmentHours?:number;
+  };
+  materials:{
+    stainGallons:number;
+    stainCostPerGallon:number;
+    cleanerAllowance:number;
+    sandingAllowance:number;
+    miscAllowance:number;
+  };
+  lines:ProposalLine[];
+  subtotal:number;
+  assumptions:string[];
+  flags:string[];
+  vision?:{
+    conditionSummary:string;
+    repairRisk:string;
+    photoFindings:string[];
+  };
+};
+
 const blankItem = {
   item_type:'labor' as EstimateItem['item_type'],
   customer_description:'',
@@ -62,6 +103,18 @@ const blankItem = {
   quantity:'1',
   unit_cost:'',
   unit_price:''
+};
+
+const blankEstimator = {
+  lengthFt:'',
+  widthFt:'',
+  railingLf:'0',
+  stairCount:'0',
+  condition:'moderate' as 'light'|'moderate'|'heavy',
+  repairHours:'0',
+  coats:'2',
+  laborRate:'120',
+  stainCostPerGallon:'55'
 };
 
 export default function Estimates(){
@@ -79,6 +132,8 @@ export default function Estimates(){
   const [busy,setBusy] = useState(false);
   const [saveState,setSaveState] = useState<'idle'|'saving'|'saved'|'error'>('idle');
   const [itemForm,setItemForm] = useState({...blankItem});
+  const [estimatorForm,setEstimatorForm] = useState({...blankEstimator});
+  const [proposal,setProposal] = useState<Proposal | null>(null);
 
   async function loadWorkspace(){
     setMessage('');
@@ -104,10 +159,10 @@ export default function Estimates(){
       return;
     }
 
-    const [jobResult,draftResult] = await Promise.all([
+    const [jobResult,draftResult,orgResult] = await Promise.all([
       supabase
         .from('jobs')
-        .select('id,title,customer_id,customers(first_name,last_name,company_name)')
+        .select('id,title,scope,customer_id,customers(first_name,last_name,company_name)')
         .eq('organization_id',orgId)
         .order('created_at',{ascending:false}),
       supabase
@@ -115,7 +170,12 @@ export default function Estimates(){
         .select('id,job_id,estimate_number,status,subtotal,tax,total,created_at,jobs(title,customers(first_name,last_name,company_name))')
         .eq('organization_id',orgId)
         .eq('status','draft')
-        .order('created_at',{ascending:false})
+        .order('created_at',{ascending:false}),
+      supabase
+        .from('organizations')
+        .select('default_labor_rate')
+        .eq('id',orgId)
+        .single()
     ]);
 
     if (jobResult.error) setMessage(jobResult.error.message);
@@ -123,6 +183,10 @@ export default function Estimates(){
 
     if (draftResult.error) setMessage(draftResult.error.message);
     else setDrafts((draftResult.data ?? []) as unknown as Draft[]);
+
+    if (!orgResult.error && orgResult.data?.default_labor_rate != null) {
+      setEstimatorForm(prev=>({...prev,laborRate:String(orgResult.data.default_labor_rate)}));
+    }
   }
 
   useEffect(()=>{void loadWorkspace();},[]);
@@ -159,6 +223,36 @@ export default function Estimates(){
     if (!error) setSavedPhotoCount(count ?? 0);
   }
 
+  async function loadSavedEstimator(estimateId:string){
+    const { data,error }=await supabase
+      .from('estimates')
+      .select('estimator_input,estimator_output')
+      .eq('id',estimateId)
+      .single();
+
+    if (error || !data) return;
+
+    const input=data.estimator_input as Record<string,unknown> | null;
+    const output=data.estimator_output as Proposal | null;
+
+    if (input && Object.keys(input).length) {
+      setEstimatorForm(prev=>({
+        ...prev,
+        lengthFt:String(input.lengthFt ?? prev.lengthFt),
+        widthFt:String(input.widthFt ?? prev.widthFt),
+        railingLf:String(input.railingLf ?? prev.railingLf),
+        stairCount:String(input.stairCount ?? prev.stairCount),
+        condition:(input.condition as 'light'|'moderate'|'heavy') ?? prev.condition,
+        repairHours:String(input.repairHours ?? prev.repairHours),
+        coats:String(input.coats ?? prev.coats),
+        laborRate:String(input.laborRate ?? prev.laborRate),
+        stainCostPerGallon:String(input.stainCostPerGallon ?? prev.stainCostPerGallon)
+      }));
+    }
+
+    if (output && Object.keys(output).length) setProposal(output);
+  }
+
   async function openDraft(draft:Draft){
     setEstimate({
       id:draft.id,
@@ -174,7 +268,8 @@ export default function Estimates(){
     setPhotos([]);
     setMessage('');
     setSaveState('saved');
-    await Promise.all([loadItems(draft.id),loadPhotoCount(draft.id)]);
+    setProposal(null);
+    await Promise.all([loadItems(draft.id),loadPhotoCount(draft.id),loadSavedEstimator(draft.id)]);
   }
 
   async function recalcEstimate(estimateId:string,nextItems?:EstimateItem[]){
@@ -269,6 +364,7 @@ export default function Estimates(){
     setEstimate(estimateData as Estimate);
     setItems([]);
     setSavedPhotoCount(0);
+    setProposal(null);
     setSaveState('saved');
     setMessage(`Draft saved. Uploading ${photos.length} photo(s)…`);
 
@@ -276,7 +372,7 @@ export default function Estimates(){
       await uploadPhotos(estimateData.id);
       setSavedPhotoCount(photos.length);
       setPhotos([]);
-      setMessage('Draft saved. Photos uploaded. Next: add labor, parts and materials.');
+      setMessage('Draft saved. Photos uploaded. Next: generate a proposal or add line items manually.');
       await loadWorkspace();
     } catch (err) {
       setMessage('Draft saved, but some photos failed to upload: ' + (err instanceof Error ? err.message : 'Unknown error'));
@@ -299,6 +395,134 @@ export default function Estimates(){
       setMessage(err instanceof Error ? err.message : 'Photo upload failed.');
     }
 
+    setBusy(false);
+  }
+
+  async function getEstimatePhotoUrls(){
+    if (!estimate) return [] as string[];
+
+    const { data,error }=await supabase
+      .from('attachments')
+      .select('bucket,object_path,mime_type')
+      .eq('estimate_id',estimate.id)
+      .order('created_at',{ascending:true});
+
+    if (error || !data) return [] as string[];
+
+    const imageRows=data.filter(row=>row.object_path && (!row.mime_type || row.mime_type.startsWith('image/')));
+    const signed=await Promise.all(imageRows.map(async row=>{
+      const { data:signedData }=await supabase.storage
+        .from(row.bucket || 'job-photos')
+        .createSignedUrl(row.object_path,900);
+      return signedData?.signedUrl ?? null;
+    }));
+
+    return signed.filter(Boolean) as string[];
+  }
+
+  async function generateProposal(){
+    if (!estimate) return;
+
+    const lengthFt=Number(estimatorForm.lengthFt);
+    const widthFt=Number(estimatorForm.widthFt);
+
+    if (!Number.isFinite(lengthFt) || lengthFt<=0 || !Number.isFinite(widthFt) || widthFt<=0) {
+      setMessage('Enter the deck length and width before generating a proposal.');
+      return;
+    }
+
+    setBusy(true);
+    setMessage('Generating proposal from measurements, condition and saved photos…');
+
+    const photoUrls=await getEstimatePhotoUrls();
+    const job=jobs.find(j=>j.id===estimate.job_id);
+
+    const input={
+      lengthFt,
+      widthFt,
+      railingLf:Number(estimatorForm.railingLf || 0),
+      stairCount:Number(estimatorForm.stairCount || 0),
+      condition:estimatorForm.condition,
+      repairHours:Number(estimatorForm.repairHours || 0),
+      coats:Number(estimatorForm.coats || 2),
+      laborRate:Number(estimatorForm.laborRate || 120),
+      stainCostPerGallon:Number(estimatorForm.stainCostPerGallon || 55),
+      scopeText:job?.scope || job?.title || '',
+      photoUrls
+    };
+
+    try {
+      const response=await fetch('/api/estimator/deck',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(input)
+      });
+
+      const data=await response.json();
+      if (!response.ok) throw new Error(data.error || 'Estimator failed.');
+
+      const nextProposal=data as Proposal;
+      setProposal(nextProposal);
+
+      const { error:saveError }=await supabase
+        .from('estimates')
+        .update({
+          estimator_input:input,
+          estimator_output:nextProposal
+        })
+        .eq('id',estimate.id);
+
+      if (saveError) throw saveError;
+
+      setMessage(nextProposal.source==='deterministic+vision'
+        ? 'Proposal generated using measurements plus photo analysis. Review before applying.'
+        : 'Proposal generated from structured measurements. Photo analysis will enrich it when the AI API key is connected.');
+    } catch(err){
+      setMessage(err instanceof Error ? err.message : 'Unable to generate proposal.');
+    }
+
+    setBusy(false);
+  }
+
+  async function applyProposal(){
+    if (!organizationId || !estimate || !proposal) return;
+
+    if (items.length>0) {
+      setMessage('This estimate already has line items. Remove them first or keep adjusting manually before applying a generated proposal.');
+      return;
+    }
+
+    setBusy(true);
+    setSaveState('saving');
+    setMessage('Applying proposal to Estimate #' + (estimate.estimate_number ?? '') + '…');
+
+    const { data,error }=await supabase
+      .from('estimate_items')
+      .insert(proposal.lines.map((line,index)=>({
+        organization_id:organizationId,
+        estimate_id:estimate.id,
+        item_type:line.type,
+        customer_description:line.description,
+        internal_description:`Estimator proposal · unit: ${line.unit} · source: ${proposal.source}`,
+        quantity:line.quantity,
+        unit_cost:line.internalCost ?? null,
+        unit_price:line.unitPrice,
+        sort_order:index
+      })))
+      .select('id,item_type,customer_description,internal_description,quantity,unit_cost,unit_price,sort_order');
+
+    if (error || !data) {
+      setSaveState('error');
+      setMessage(error?.message || 'Unable to apply proposal.');
+      setBusy(false);
+      return;
+    }
+
+    const next=data as EstimateItem[];
+    setItems(next);
+    await recalcEstimate(estimate.id,next);
+    setSaveState('saved');
+    setMessage('Proposal applied. Review the line items and adjust anything before sending to the customer.');
     setBusy(false);
   }
 
@@ -378,7 +602,7 @@ export default function Estimates(){
   return <div>
     <p className="kicker">Estimate builder</p>
     <h1 className="page-title">Estimates</h1>
-    <p className="subtitle">Drafts save first. Photos and pricing are added to the saved draft.</p>
+    <p className="subtitle">Drafts save first. Generate a proposal from measurements and photos, then review before sending.</p>
 
     {!estimate && <>
       {drafts.length>0 && <section className="card" style={{marginBottom:16}}>
@@ -420,26 +644,11 @@ export default function Estimates(){
             </select>
           </label>
 
-          <div
-            className="photo-dropzone"
-            onDragOver={e=>e.preventDefault()}
-            onDrop={handleDrop}
-            onClick={()=>fileInputRef.current?.click()}
-            style={{marginTop:14}}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              multiple
-              onChange={e=>addSelectedPhotos(Array.from(e.target.files ?? []))}
-              style={{display:'none'}}
-            />
+          <div className="photo-dropzone" onDragOver={e=>e.preventDefault()} onDrop={handleDrop} onClick={()=>fileInputRef.current?.click()} style={{marginTop:14}}>
+            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={e=>addSelectedPhotos(Array.from(e.target.files ?? []))} style={{display:'none'}} />
             <div className="primary">Drag & drop photos here</div>
             <div className="secondary">or click to choose JPEG, PNG or WebP files</div>
-            <div className="secondary" style={{marginTop:8}}>
-              {photos.length ? `${photos.length} photo(s) ready to upload` : 'No photos selected yet'}
-            </div>
+            <div className="secondary" style={{marginTop:8}}>{photos.length ? `${photos.length} photo(s) ready to upload` : 'No photos selected yet'}</div>
           </div>
 
           <div className="actions" style={{marginTop:16}}>
@@ -451,8 +660,8 @@ export default function Estimates(){
 
         <aside className="card">
           <p className="kicker">What happens next</p>
-          <h2 className="section-title">Then build the price</h2>
-          <p className="secondary">After the draft is saved, you stay on that draft and add Labor, Parts and Materials. Leaving the page does not delete it.</p>
+          <h2 className="section-title">Generate, then review</h2>
+          <p className="secondary">The estimator proposes labor and materials from measurements, condition and available photos. You approve or adjust it before anything becomes customer-facing.</p>
         </aside>
       </div>
     </>}
@@ -462,88 +671,108 @@ export default function Estimates(){
         <div className="group-head">
           <div>
             <p className="kicker">Saved draft</p>
-            <h2 className="section-title" style={{marginBottom:2}}>
-              Estimate #{estimate.estimate_number ?? '—'} · {jobs.find(j=>j.id===estimate.job_id)?.title || 'Estimate draft'}
-            </h2>
+            <h2 className="section-title" style={{marginBottom:2}}>Estimate #{estimate.estimate_number ?? '—'} · {jobs.find(j=>j.id===estimate.job_id)?.title || 'Estimate draft'}</h2>
             <div className="secondary">{savedPhotoCount} saved photo(s) · {items.length} line item(s)</div>
           </div>
           <div style={{textAlign:'right'}}>
-            <span className={saveState==='error'?'badge warn':'badge success'}>
-              {saveState==='saving'?'Saving…':saveState==='error'?'Save issue':'Draft saved'}
-            </span>
-            <div style={{marginTop:8}}>
-              <button className="btn btn-secondary" type="button" onClick={()=>{setEstimate(null);setItems([]);setPhotos([]);setMessage('');void loadWorkspace();}}>Back to estimates</button>
-            </div>
+            <span className={saveState==='error'?'badge warn':'badge success'}>{saveState==='saving'?'Saving…':saveState==='error'?'Save issue':'Draft saved'}</span>
+            <div style={{marginTop:8}}><button className="btn btn-secondary" type="button" onClick={()=>{setEstimate(null);setItems([]);setPhotos([]);setProposal(null);setMessage('');void loadWorkspace();}}>Back to estimates</button></div>
           </div>
         </div>
-
         {message && <div className="secondary" style={{marginTop:10}}>{message}</div>}
+      </section>
+
+      <section className="card" style={{marginBottom:16}}>
+        <p className="kicker">Step 2</p>
+        <h2 className="section-title">Generate deck proposal</h2>
+        <p className="secondary">Enter the measurements you know. Photos and the job scope provide context; you do not need to write a long description.</p>
+
+        <div className="grid grid-2">
+          <label><div className="secondary">Deck length (ft)</div><input type="number" min="0" step="0.1" value={estimatorForm.lengthFt} onChange={e=>setEstimatorForm({...estimatorForm,lengthFt:e.target.value})} style={inputStyle}/></label>
+          <label><div className="secondary">Deck width (ft)</div><input type="number" min="0" step="0.1" value={estimatorForm.widthFt} onChange={e=>setEstimatorForm({...estimatorForm,widthFt:e.target.value})} style={inputStyle}/></label>
+          <label><div className="secondary">Railing length (linear ft)</div><input type="number" min="0" step="1" value={estimatorForm.railingLf} onChange={e=>setEstimatorForm({...estimatorForm,railingLf:e.target.value})} style={inputStyle}/></label>
+          <label><div className="secondary">Number of stair treads</div><input type="number" min="0" step="1" value={estimatorForm.stairCount} onChange={e=>setEstimatorForm({...estimatorForm,stairCount:e.target.value})} style={inputStyle}/></label>
+          <label><div className="secondary">Surface condition</div>
+            <select value={estimatorForm.condition} onChange={e=>setEstimatorForm({...estimatorForm,condition:e.target.value as 'light'|'moderate'|'heavy'})} style={inputStyle}>
+              <option value="light">Light prep</option><option value="moderate">Moderate prep</option><option value="heavy">Heavy prep</option>
+            </select>
+          </label>
+          <label><div className="secondary">Repair labor allowance (hours)</div><input type="number" min="0" step="0.25" value={estimatorForm.repairHours} onChange={e=>setEstimatorForm({...estimatorForm,repairHours:e.target.value})} style={inputStyle}/></label>
+          <label><div className="secondary">Number of stain coats</div><input type="number" min="1" max="4" step="1" value={estimatorForm.coats} onChange={e=>setEstimatorForm({...estimatorForm,coats:e.target.value})} style={inputStyle}/></label>
+          <label><div className="secondary">GPPS hourly labor rate</div><input type="number" min="0" step="1" value={estimatorForm.laborRate} onChange={e=>setEstimatorForm({...estimatorForm,laborRate:e.target.value})} style={inputStyle}/></label>
+          <label><div className="secondary">Stain cost per gallon</div><input type="number" min="0" step="1" value={estimatorForm.stainCostPerGallon} onChange={e=>setEstimatorForm({...estimatorForm,stainCostPerGallon:e.target.value})} style={inputStyle}/></label>
+        </div>
+
+        <div className="actions" style={{marginTop:16}}>
+          <button className="btn btn-primary" type="button" onClick={generateProposal} disabled={busy}>{busy?'Generating…':'Generate proposal'}</button>
+        </div>
+
+        {proposal && <div className="card" style={{marginTop:16,boxShadow:'none'}}>
+          <div className="group-head">
+            <div>
+              <h3 className="section-title" style={{marginBottom:2}}>Proposed estimate</h3>
+              <div className="secondary">{proposal.source==='deterministic+vision'?'Measurements + photo analysis':'Measurements + estimating model'} · {proposal.measurements.deckAreaSqFt.toFixed(0)} sq ft deck</div>
+            </div>
+            <div className="metric-value money">${proposal.subtotal.toFixed(2)}</div>
+          </div>
+
+          <div className="grid grid-2" style={{marginTop:12}}>
+            <div className="card" style={{boxShadow:'none'}}>
+              <div className="secondary">Proposed labor</div>
+              <div className="primary">{proposal.labor.totalHours.toFixed(2)} hr × ${proposal.labor.hourlyRate.toFixed(2)}/hr</div>
+              <div className="secondary">Clean {proposal.labor.cleaningHours} · Sand {proposal.labor.sandingHours} · Stain {proposal.labor.stainingHours} · Repair {proposal.labor.repairHours}</div>
+            </div>
+            <div className="card" style={{boxShadow:'none'}}>
+              <div className="secondary">Proposed stain</div>
+              <div className="primary">{proposal.materials.stainGallons} gallon(s)</div>
+              <div className="secondary">{estimatorForm.coats} coat(s) plus planning waste</div>
+            </div>
+          </div>
+
+          {proposal.vision?.conditionSummary && <div style={{marginTop:14}}><strong>Photo assessment</strong><div className="secondary">{proposal.vision.conditionSummary}</div></div>}
+
+          {proposal.flags.length>0 && <div style={{marginTop:14}}><strong>Review flags</strong><ul>{proposal.flags.map((flag,i)=><li key={i} className="secondary">{flag}</li>)}</ul></div>}
+
+          <div style={{marginTop:14}}><strong>Proposed customer lines</strong>
+            <div className="list">
+              {proposal.lines.map((line,i)=><div className="list-item" key={i}>
+                <div><div className="primary">{line.description}</div><div className="secondary">{line.quantity} {line.unit} × ${line.unitPrice.toFixed(2)}</div></div>
+                <div className="primary money">${(line.quantity*line.unitPrice).toFixed(2)}</div>
+              </div>)}
+            </div>
+          </div>
+
+          <div className="actions" style={{marginTop:16}}>
+            <button className="btn btn-primary" type="button" onClick={applyProposal} disabled={busy || items.length>0}>Apply proposal to estimate</button>
+            {items.length>0 && <span className="secondary">Remove existing manual lines before applying a generated proposal.</span>}
+          </div>
+        </div>}
       </section>
 
       <div className="quote-builder">
         <section className="card">
-          <p className="kicker">Step 2</p>
-          <h2 className="section-title">Add labor, parts and materials</h2>
-          <p className="secondary">Add one priced line at a time. Everything you add here is saved immediately to this draft.</p>
+          <p className="kicker">Step 3</p>
+          <h2 className="section-title">Review or adjust line items</h2>
+          <p className="secondary">Generated lines appear here after you apply the proposal. You can also add lines manually.</p>
 
           <div className="actions" style={{marginBottom:14}}>
-            {(['labor','part','material','other'] as EstimateItem['item_type'][]).map(type=>
-              <button
-                key={type}
-                className={itemForm.item_type===type?'btn btn-primary':'btn btn-secondary'}
-                type="button"
-                onClick={()=>setItemForm({...itemForm,item_type:type})}
-              >
-                {type==='labor'?'Labor':type==='part'?'Part':type==='material'?'Material':'Other'}
-              </button>
-            )}
+            {(['labor','part','material','other'] as EstimateItem['item_type'][]).map(type=><button key={type} className={itemForm.item_type===type?'btn btn-primary':'btn btn-secondary'} type="button" onClick={()=>setItemForm({...itemForm,item_type:type})}>{type==='labor'?'Labor':type==='part'?'Part':type==='material'?'Material':'Other'}</button>)}
           </div>
 
           <form onSubmit={addItem} className="grid grid-2">
-            <label>
-              <div className="secondary">{itemForm.item_type==='labor' ? 'Hours' : 'Quantity'}</div>
-              <input type="number" step="0.01" min="0.01" value={itemForm.quantity} onChange={e=>setItemForm({...itemForm,quantity:e.target.value})} style={inputStyle}/>
-            </label>
-
-            <label>
-              <div className="secondary">{itemForm.item_type==='labor' ? 'Hourly rate charged to customer' : 'Price per unit charged to customer'}</div>
-              <input type="number" step="0.01" min="0" value={itemForm.unit_price} onChange={e=>setItemForm({...itemForm,unit_price:e.target.value})} required style={inputStyle}/>
-            </label>
-
-            <label style={{gridColumn:'1 / -1'}}>
-              <div className="secondary">Customer-facing description</div>
-              <input value={itemForm.customer_description} onChange={e=>setItemForm({...itemForm,customer_description:e.target.value})} placeholder="e.g. Clean, sand and stain deck surface" style={inputStyle}/>
-            </label>
-
-            <label style={{gridColumn:'1 / -1'}}>
-              <div className="secondary">Internal note (not shown to customer)</div>
-              <input value={itemForm.internal_description} onChange={e=>setItemForm({...itemForm,internal_description:e.target.value})} placeholder="Crew assumptions, prep notes, supplier detail…" style={inputStyle}/>
-            </label>
-
-            <label>
-              <div className="secondary">{itemForm.item_type==='labor' ? 'Internal labor cost per hour (optional)' : 'Internal cost per unit (optional)'}</div>
-              <input type="number" step="0.01" min="0" value={itemForm.unit_cost} onChange={e=>setItemForm({...itemForm,unit_cost:e.target.value})} style={inputStyle}/>
-            </label>
-
-            <div className="actions" style={{alignItems:'end'}}>
-              <button className="btn btn-primary" disabled={busy}>Save {itemForm.item_type}</button>
-            </div>
+            <label><div className="secondary">{itemForm.item_type==='labor' ? 'Hours' : 'Quantity'}</div><input type="number" step="0.01" min="0.01" value={itemForm.quantity} onChange={e=>setItemForm({...itemForm,quantity:e.target.value})} style={inputStyle}/></label>
+            <label><div className="secondary">{itemForm.item_type==='labor' ? 'Hourly rate charged to customer' : 'Price per unit charged to customer'}</div><input type="number" step="0.01" min="0" value={itemForm.unit_price} onChange={e=>setItemForm({...itemForm,unit_price:e.target.value})} required style={inputStyle}/></label>
+            <label style={{gridColumn:'1 / -1'}}><div className="secondary">Customer-facing description</div><input value={itemForm.customer_description} onChange={e=>setItemForm({...itemForm,customer_description:e.target.value})} placeholder="e.g. Clean, sand and stain deck surface" style={inputStyle}/></label>
+            <label style={{gridColumn:'1 / -1'}}><div className="secondary">Internal note (not shown to customer)</div><input value={itemForm.internal_description} onChange={e=>setItemForm({...itemForm,internal_description:e.target.value})} placeholder="Crew assumptions, prep notes, supplier detail…" style={inputStyle}/></label>
+            <label><div className="secondary">{itemForm.item_type==='labor' ? 'Internal labor cost per hour (optional)' : 'Internal cost per unit (optional)'}</div><input type="number" step="0.01" min="0" value={itemForm.unit_cost} onChange={e=>setItemForm({...itemForm,unit_cost:e.target.value})} style={inputStyle}/></label>
+            <div className="actions" style={{alignItems:'end'}}><button className="btn btn-primary" disabled={busy}>Save {itemForm.item_type}</button></div>
           </form>
 
           <div className="group" style={{marginTop:24}}>
-            {items.length===0 && <div className="secondary">No pricing lines yet. Start with the labor, part or material you want to quote first.</div>}
+            {items.length===0 && <div className="secondary">No pricing lines yet. Generate a proposal above or add a line manually.</div>}
             {items.map(item=><div className="line-row" key={item.id}>
-              <div>
-                <div className="primary">{item.customer_description}</div>
-                <div className="secondary">
-                  {item.item_type} · {item.quantity} × ${Number(item.unit_price).toFixed(2)}
-                  {item.internal_description ? ' · Internal: ' + item.internal_description : ''}
-                </div>
-              </div>
-              <div style={{textAlign:'right'}}>
-                <div className="primary money">${(Number(item.quantity)*Number(item.unit_price)).toFixed(2)}</div>
-                <button type="button" className="btn btn-secondary" style={{marginTop:6,padding:'6px 9px'}} onClick={()=>removeItem(item.id)}>Remove</button>
-              </div>
+              <div><div className="primary">{item.customer_description}</div><div className="secondary">{item.item_type} · {item.quantity} × ${Number(item.unit_price).toFixed(2)}{item.internal_description ? ' · Internal: ' + item.internal_description : ''}</div></div>
+              <div style={{textAlign:'right'}}><div className="primary money">${(Number(item.quantity)*Number(item.unit_price)).toFixed(2)}</div><button type="button" className="btn btn-secondary" style={{marginTop:6,padding:'6px 9px'}} onClick={()=>removeItem(item.id)}>Remove</button></div>
             </div>)}
           </div>
         </section>
@@ -552,30 +781,17 @@ export default function Estimates(){
           <section className="card">
             <p className="kicker">Draft total</p>
             <div className="metric-value money">${customerPrice.toFixed(2)}</div>
-
             <div className="list" style={{marginTop:18}}>
-              <div className="list-item">
-                <div className="secondary">Estimated internal cost</div>
-                <div className="primary money">${estimatedCost.toFixed(2)}</div>
-              </div>
-              <div className="list-item">
-                <div className="secondary">Estimated gross margin</div>
-                <div className="primary money">${margin.toFixed(2)}</div>
-              </div>
+              <div className="list-item"><div className="secondary">Estimated internal cost</div><div className="primary money">${estimatedCost.toFixed(2)}</div></div>
+              <div className="list-item"><div className="secondary">Estimated gross margin</div><div className="primary money">${margin.toFixed(2)}</div></div>
             </div>
-
             <p className="secondary" style={{marginTop:14}}>Internal cost and margin are never shown on the customer-facing estimate.</p>
           </section>
 
           <section className="card" style={{marginTop:16}}>
             <p className="kicker">Photos</p>
             <h2 className="section-title">Add more photos</h2>
-            <div
-              className="photo-dropzone"
-              onDragOver={e=>e.preventDefault()}
-              onDrop={handleDrop}
-              onClick={()=>fileInputRef.current?.click()}
-            >
+            <div className="photo-dropzone" onDragOver={e=>e.preventDefault()} onDrop={handleDrop} onClick={()=>fileInputRef.current?.click()}>
               <div className="primary">Drag & drop or click</div>
               <div className="secondary">{photos.length ? `${photos.length} photo(s) ready` : 'Add more site photos anytime'}</div>
             </div>
