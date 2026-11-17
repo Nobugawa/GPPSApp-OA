@@ -860,7 +860,7 @@ export default function Estimates(){
             <h2 className="section-title-lg">Build the price</h2>
             <p className="section-copy">Give it the essentials. GPPS Field handles the calculations and keeps the details available when you need them.</p>
           </div>
-          <div className="photo-count-chip">${savedPhotoCount} photos</div>
+          <div className="photo-count-chip">{savedPhotoCount} photos</div>
         </div>
 
         <div className="grid grid-2 estimate-basics">
@@ -1041,7 +1041,7 @@ export default function Estimates(){
           </form>
 
           <div className="group" style={{marginTop:24}}>
-            {items.length===0 && <div className="secondary">No pricing lines yet. Generate a proposal above or add a line manually.</div>}
+            {items.length===0 && <div className="secondary">No pricing lines yet. Calculate an estimate above or add a line manually.</div>}
             {items.map(item=><div className="line-row" key={item.id}>
               <div><div className="primary">{item.customer_description}</div><div className="secondary">{item.item_type} · {item.quantity} × ${Number(item.unit_price).toFixed(2)}{item.internal_description ? ' · Internal: ' + item.internal_description : ''}</div></div>
               <div style={{textAlign:'right'}}><div className="primary money">${(Number(item.quantity)*Number(item.unit_price)).toFixed(2)}</div><button type="button" className="btn btn-secondary" style={{marginTop:6,padding:'6px 9px'}} onClick={()=>removeItem(item.id)}>Remove</button></div>
