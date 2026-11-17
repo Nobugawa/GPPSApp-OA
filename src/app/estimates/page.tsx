@@ -711,6 +711,7 @@ export default function Estimates(){
   const estimatedCost=items.reduce((sum,item)=>sum+(Number(item.quantity)*Number(item.unit_cost ?? 0)),0);
   const customerPrice=estimate?.total ?? 0;
   const margin=customerPrice-estimatedCost;
+  const currentJob=estimate ? jobs.find(j=>j.id===estimate.job_id) : null;
 
   return <div>
     <p className="kicker">Estimate builder</p>
@@ -816,30 +817,51 @@ export default function Estimates(){
     </>}
 
     {estimate && <div>
-      <section className="card" style={{marginBottom:16}}>
-        <div className="group-head">
+      <section className="workspace-card" style={{marginBottom:16}}>
+        <div className="workspace-top">
           <div>
-            <p className="kicker">{estimate.status==='draft' ? 'Draft estimate' : 'Saved estimate'}</p>
-            <h2 className="section-title" style={{marginBottom:2}}>Estimate #{estimate.estimate_number ?? '—'} · {jobs.find(j=>j.id===estimate.job_id)?.title || 'Estimate draft'}</h2>
-            <div className="secondary">{savedPhotoCount} saved photo(s) · {items.length} line item(s)</div>
+            <div className="workspace-eyebrow">Job / Estimate</div>
+            <h2 className="workspace-title">{customerName(currentJob?.customers)}</h2>
+            <div className="workspace-subtitle">{currentJob?.title || 'Estimate draft'}</div>
           </div>
-          <div style={{textAlign:'right'}}>
-            <span className={saveState==='error'?'badge warn':'badge success'}>{saveState==='saving'?'Saving…':saveState==='error'?'Save issue':estimate.status==='draft'?'Draft saved':'Ready'}</span>
-            <div className="actions" style={{marginTop:8,justifyContent:'flex-end'}}>
-              {estimate.status==='draft'
-                ? <button className="btn btn-primary" type="button" onClick={()=>setEstimateStatus('ready')} disabled={busy}>Mark Ready</button>
-                : <button className="btn btn-secondary" type="button" onClick={()=>setEstimateStatus('draft')} disabled={busy}>Reopen as Draft</button>}
-              <button className="btn btn-secondary" type="button" onClick={()=>{setEstimate(null);setItems([]);setPhotos([]);setAccessPhotos([]);setProposal(null);setMessage('');void loadWorkspace();}}>Back to estimates</button>
-            </div>
+          <div className="workspace-meta">
+            <div className="estimate-number">Estimate #{estimate.estimate_number ?? '—'}</div>
+            <span className={estimate.status==='draft'?'status-pill draft':'status-pill ready'}>{estimate.status==='draft'?'Draft':'Ready'}</span>
           </div>
         </div>
-        {message && <div className="secondary" style={{marginTop:10}}>{message}</div>}
+
+        <div className="workspace-tabs">
+          <span className="workspace-tab active">Overview</span>
+          <span className="workspace-tab">Items <b>{items.length}</b></span>
+          <span className="workspace-tab">Photos <b>{savedPhotoCount}</b></span>
+          <span className="workspace-tab">Notes</span>
+        </div>
+
+        <div className="workspace-actions">
+          <div className={saveState==='error'?'save-indicator error':'save-indicator'}>
+            <span className="save-dot"></span>
+            {saveState==='saving'?'Saving…':saveState==='error'?'Save issue':'Saved'}
+          </div>
+          <div className="actions">
+            {estimate.status==='draft'
+              ? <button className="btn btn-primary btn-strong" type="button" onClick={()=>setEstimateStatus('ready')} disabled={busy}>Mark Ready</button>
+              : <button className="btn btn-secondary" type="button" onClick={()=>setEstimateStatus('draft')} disabled={busy}>Reopen Draft</button>}
+            <button className="btn btn-ghost" type="button" onClick={()=>{setEstimate(null);setItems([]);setPhotos([]);setAccessPhotos([]);setProposal(null);setMessage('');void loadWorkspace();}}>Back</button>
+          </div>
+        </div>
+        {message && <div className="inline-message">{message}</div>}
       </section>
 
-      <section className="card" style={{marginBottom:16}}>
-        <p className="kicker">Step 2</p>
-        <h2 className="section-title">Generate deck proposal</h2>
-        <p className="secondary">Enter the measurements you know. Photos and the job scope provide context; you do not need to write a long description.</p>
+      <div className="estimate-workspace-grid">
+      <section className="card estimator-card">
+        <div className="section-head">
+          <div>
+            <div className="section-step">Estimate</div>
+            <h2 className="section-title-lg">Build the price</h2>
+            <p className="section-copy">Give it the essentials. GPPS Field handles the calculations and keeps the details available when you need them.</p>
+          </div>
+          <div className="photo-count-chip">${savedPhotoCount} photos</div>
+        </div>
 
         <div className="grid grid-2 estimate-basics">
           <label><div className="field-label">Deck length</div><input type="number" min="0" step="0.1" value={estimatorForm.lengthFt} onChange={e=>setEstimatorForm({...estimatorForm,lengthFt:e.target.value})} placeholder="ft" style={inputStyle}/></label>
@@ -926,17 +948,18 @@ export default function Estimates(){
           </div>
         </details>
 
-        <div className="actions" style={{marginTop:16}}>
-          <button className="btn btn-primary" type="button" onClick={generateProposal} disabled={busy}>{busy?'Generating…':'Generate proposal'}</button>
+        <div className="actions" style={{marginTop:18}}>
+          <button className="btn btn-primary btn-strong" type="button" onClick={generateProposal} disabled={busy}>{busy?'Calculating…':'Calculate estimate'}</button>
         </div>
 
-        {proposal && <div className="card" style={{marginTop:16,boxShadow:'none'}}>
-          <div className="group-head">
+        {proposal && <div className="proposal-card">
+          <div className="proposal-head">
             <div>
-              <h3 className="section-title" style={{marginBottom:2}}>Recommended estimate</h3>
+              <div className="proposal-kicker">Recommended</div>
+              <h3 className="proposal-title">Estimate total</h3>
               <div className="secondary">{proposal.source==='deterministic+vision'?'Measurements + photo analysis':'Measurements + estimating model'} · {Number(proposal.measurements.deckAreaSqFt ?? 0).toFixed(0)} sq ft deck · {Number(proposal.measurements.railingLf ?? 0).toFixed(0)} LF railing · {Number(proposal.measurements.totalTreadWidthFt ?? 0).toFixed(0)} ft cumulative tread width · ~{Number(proposal.measurements.estimatedDeckHeightFt ?? 0).toFixed(1)} ft high ({proposal.measurements.elevationClass}, {proposal.measurements.elevationSource==='manual'?'manual':'inferred'})</div>
             </div>
-            <div className="metric-value money">${proposal.subtotal.toFixed(2)}</div>
+            <div className="proposal-total money">${proposal.subtotal.toFixed(2)}</div>
           </div>
 
           <div className="grid grid-2" style={{marginTop:12}}>
@@ -966,13 +989,40 @@ export default function Estimates(){
           </div>
 
           <div className="actions" style={{marginTop:16}}>
-            <button className="btn btn-primary" type="button" onClick={applyProposal} disabled={busy}>Use this estimate</button>
+            <button className="btn btn-primary btn-strong" type="button" onClick={applyProposal} disabled={busy}>Use this estimate</button>
             {items.length>0 && <span className="secondary">Applying again replaces prior estimator-generated lines while preserving manual lines.</span>}
           </div>
         </div>}
       </section>
 
-      <div className="quote-builder">
+      <aside className="estimate-summary-panel">
+        <div className="summary-card primary-summary">
+          <div className="summary-label">Current estimate</div>
+          <div className="summary-total money">${customerPrice.toFixed(2)}</div>
+          <div className="summary-row"><span>Line items</span><strong>{items.length}</strong></div>
+          <div className="summary-row"><span>Photos</span><strong>{savedPhotoCount}</strong></div>
+          <div className="summary-row"><span>Status</span><strong>{estimate.status==='draft'?'Draft':'Ready'}</strong></div>
+        </div>
+
+        <div className="summary-card">
+          <div className="summary-label">Internal only</div>
+          <div className="summary-row"><span>Estimated cost</span><strong className="money">${estimatedCost.toFixed(2)}</strong></div>
+          <div className="summary-row"><span>Gross margin</span><strong className="money">${margin.toFixed(2)}</strong></div>
+        </div>
+
+        <div className="summary-card">
+          <div className="summary-label">Photos</div>
+          <div className="summary-copy">Add more site photos anytime.</div>
+          <div className="photo-dropzone compact" onDragOver={e=>e.preventDefault()} onDrop={handleDrop} onClick={()=>fileInputRef.current?.click()}>
+            <div className="primary">+ Add photos</div>
+            <div className="secondary">{photos.length ? `${photos.length} ready` : 'Drag, drop or click'}</div>
+          </div>
+          {photos.length>0 && <button className="btn btn-primary" style={{marginTop:10,width:'100%'}} type="button" onClick={addMorePhotos} disabled={busy}>Upload photos</button>}
+        </div>
+      </aside>
+      </div>
+
+      <div style={{marginTop:16}}>
         <details className="card advanced-panel">
           <summary>Advanced line-item editing</summary>
           <p className="secondary">Use this only when you want to change the calculated labor/material lines or add a special item.</p>
@@ -999,27 +1049,6 @@ export default function Estimates(){
           </div>
         </details>
 
-        <aside>
-          <section className="card">
-            <p className="kicker">Draft total</p>
-            <div className="metric-value money">${customerPrice.toFixed(2)}</div>
-            <div className="list" style={{marginTop:18}}>
-              <div className="list-item"><div className="secondary">Estimated internal cost</div><div className="primary money">${estimatedCost.toFixed(2)}</div></div>
-              <div className="list-item"><div className="secondary">Estimated gross margin</div><div className="primary money">${margin.toFixed(2)}</div></div>
-            </div>
-            <p className="secondary" style={{marginTop:14}}>Internal cost and margin are never shown on the customer-facing estimate.</p>
-          </section>
-
-          <section className="card" style={{marginTop:16}}>
-            <p className="kicker">Photos</p>
-            <h2 className="section-title">Add more photos</h2>
-            <div className="photo-dropzone" onDragOver={e=>e.preventDefault()} onDrop={handleDrop} onClick={()=>fileInputRef.current?.click()}>
-              <div className="primary">Drag & drop or click</div>
-              <div className="secondary">{photos.length ? `${photos.length} photo(s) ready` : 'Add more site photos anytime'}</div>
-            </div>
-            {photos.length>0 && <button className="btn btn-primary" style={{marginTop:12}} type="button" onClick={addMorePhotos} disabled={busy}>Upload selected photos</button>}
-          </section>
-        </aside>
       </div>
     </div>}
   </div>
